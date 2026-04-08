@@ -231,11 +231,138 @@ PrintString（"AI moves to XX"）も計測に含まれるが誤差は微小。
 
 ---
 
+## uart&Display.py 修正・動作確認 (2026-04-08)
+
+旧バージョンの既知バグ2点を修正し、動作確認済み。
+
+### 修正内容
+
+1. `time.ticks_us()` → `utime.ticks_us()` / `utime.ticks_diff()` に統一（インポートが `utime` のため）
+2. `elapsed = measure_once()` で戻り値を受け取り `// 1000` で ms 整数変換→ `f"Time:{elapsed:d}ms"` で LCD 表示
+
+### メインループの動作
+
+```
+while True:
+    receive_data() → UART受信があればLCDに表示
+    sleep(0.1)
+    measure_once() → GPIO15 HIGH/LOWエッジ計測 → LCD に "Time:XXXms" 表示
+```
+
+---
+
+## AI処理時間 実測結果 (2026-04-08)
+
+対象: `RVS8_MM1_MOB.ASM` の `AIset`（depth-1 minimax + モビリティ）
+
+| 局面 | 処理時間 |
+|---|---|
+| 合法手が多い（序盤〜中盤） | ≈ 700 ms |
+| 合法手が少ない（終盤など） | ≈ 200 ms |
+
+計測方法: PIOA D7 → Pico GPIO15 → `uart&Display.py` で LCD 表示
+
+**考察:** 64マス走査 × 相手合法手カウント（OppBestScore）が支配的。  
+depth-2 にするには α-β 枝刈りが必須。
+
+---
+
+## uart_board.py / boardDisplay.py 開発 (2026-04-08)
+
+### uart_board.py
+UART受信行を解析して盤面配列を構築するパーサー単体テスト用ファイル。  
+先頭が`1`〜`8`の行のみ `split()` で解析。動作確認済み。
+
+### boardDisplay.py
+`testOthelloGUI.py` をベースに UART盤面パーサーを統合した LCD表示ファイル。
+
+**機能:**
+- 盤面背景（緑）・グリッド線・A-H/1-8 ラベル描画
+- UART受信ごとに該当行の石を即時更新（全消去なし・行単位で描画）
+- X石（黒）/ O石（白）/ 空白（緑で消去）
+- スコア行 (`X:06 O:12`) → 盤面下に表示
+- AI手行 (`AI moves to XX`) → 強調色で表示
+
+**色対応 (madctl(0x88) 補色補正):**
+| 定数 | 画面上の色 | 用途 |
+|---|---|---|
+| `st7789.MAGENTA` | 緑 | 盤面背景 |
+| `st7789.WHITE` | 黒 | X石・グリッド・文字 |
+| `st7789.BLACK` | 白 | O石・画面背景 |
+| `st7789.YELLOW` | シアン | AI手テキスト強調 |
+
+---
+
+## boardDisplay.py 動作確認 (2026-04-08)
+
+`boardDisplay.py` を実機で確認、正常動作を確認済み。
+
+表示内容（ステータスエリア）:
+```
+X:06 O:12          ← スコア
+AI moves to C8     ← AI手（シアン強調）
+Time:687ms         ← 処理時間（ノンブロッキング計測）
+```
+
+---
+
+## PIOB スイッチ入力移管 (2026-04-09)
+
+新ファイル: `RVS8_PIOSW.ASM`（`RVS8_MM1_MOB.ASM` をベースに作成）
+
+### 変更内容
+
+| 追加要素 | 内容 |
+|---|---|
+| `PIOB_DATA=1FH, PIOB_CMD=1EH` | PIOB ポート定義 |
+| `SW_UP/DOWN/LEFT/RIGHT/ENTER` | スイッチビット定数 (01H〜10H) |
+| `PLR_COL, PLR_ROW` | カーソル変数 |
+| `InitPIOB` | PIOB を Mode3 全ビット入力で初期化 |
+| `Debounce` | ≈20ms ソフトウェア遅延 |
+| `WaitSwPress` | 押下→デバウンス→離し待ち→bitmask 返却 |
+| `SW_PlayerMove` | スイッチ入力プレイヤー手ルーティン |
+
+### スイッチ割り当て
+
+| スイッチ | PIO ピン | 役割 |
+|---|---|---|
+| SW0 | PB0 | 上（行--） |
+| SW1 | PB1 | 下（行++） |
+| SW2 | PB2 | 左（列--） |
+| SW3 | PB3 | 右（列++） |
+| SW4 | PB4 | Enter（確定） |
+
+アクティブLOW（押す=0）を `CPL` で反転して処理。  
+bitmask は `E` レジスタに退避し、カーソル移動中の A 上書きを回避。
+
+### 動作フロー
+
+```
+SW_PlayerMove:
+  ガイドメッセージ表示
+  カーソル A1 に初期化
+  ループ:
+    \rMove: XX 表示
+    WaitSwPress → bitmask を E に退避
+    SW4? → SWP_ENTER
+    SW0-3? → カーソル移動（0-7 ラップ）
+    → ループ
+  SWP_ENTER:
+    B=行, C=列 → IsLegalMove → ApplyMove
+    違法 → メッセージ表示 → ループ
+```
+
+旧 `PlayerMove`（SIOA キーボード入力版）はデバッグ用としてファイル内に保持。
+
+---
+
 ## 次回やること
 
-1. `RVS8_MM1_MOB.ASM` に PIO D7 計測を組み込み、AI 1ターンの処理時間を実測
-2. Pico 側で SIOA データストリームをパースして LCD に盤面を描画
-3. スイッチ入力を Z80 PIO 経由に移管
+1. ~~`RVS8_MM1_MOB.ASM` でAI 1ターンの処理時間を実測~~ ✓ 完了
+2. ~~`boardDisplay.py` を実機で動作確認~~ ✓ 完了
+3. ~~スイッチ入力を Z80 PIO 経由に移管~~ ✓ 完了 (`RVS8_PIOSW.ASM`)
+4. `RVS8_PIOSW.ASM` を実機でアセンブル・動作確認
+5. `boardDisplay.py` の描画部分の調整・改善
 
 ---
 
