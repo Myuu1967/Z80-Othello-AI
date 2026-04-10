@@ -435,6 +435,88 @@ tft.circle(72, ST_Y_SCORE, STONE_R, COL_STONE_X)        # O石の輪郭
 
 ---
 
+## gameDisplay.py 追加改良 (2026-04-10)
+
+### Pico起動時カーソル追跡 (BS BSパターン対応)
+
+`feed_byte()` に BS×2 検出を追加。  
+Pico起動時に Z80 がすでに `WaitSwPress` でブロック中の場合、初回の `Move: XX` を受け取れないが、  
+スイッチ操作後の `BS BS col row` パターンを検出してカーソルモードに入ることで1キー操作後から表示が追従する。
+
+```python
+if b == 0x08 and len(_sbuf) > 0 and _sbuf[-1] == 0x08:
+    _in_cursor = True   # BS BS → カーソル更新モードへ
+```
+
+### プレイヤー色アイコン表示 (4行目)
+
+Z80 の色通知行をパースして `player_stone` を確定し、4行目左端に自分の石色アイコンを表示。
+
+```
+Z80出力: "You go first. You are BLACK (X)."  → player_stone = 'X'
+         "AI goes first. You are WHITE (O)." → player_stone = 'O'
+```
+
+- テキスト `You: D4` は x=26 から描画
+- x=14 に自分の色の塗りつぶし円（白石は輪郭線も追加）
+
+### リトライ/終了プロンプト表示 (5行目)
+
+終局時の `r:Retry or q:Quit ?` 行を受信すると `retry_mode = True` になり 5行目を表示。  
+新しい盤面の先頭行を受信すると自動クリア。
+
+```
+ST_Y_RETRY = 308  : [シアン●]:Retry   [赤●]:Quit
+```
+
+| 変数 | 値 | タイミング |
+|------|----|-----------|
+| `retry_mode = True` | `r:Retry` 行受信時 | GAME OVER → プロンプト表示 |
+| `retry_mode = False` | 新盤面 row_idx==0 受信時 | 新ゲーム開始 |
+
+### ステータスエリア最終レイアウト (5行)
+
+```
+ST_Y_SCORE = 236  : [●]04  [○]04
+ST_Y_MOVE  = 254  : AI moves to C8   (シアン)
+ST_Y_TIME  = 272  : Time:687ms
+ST_Y_HUMAN = 290  : [自色●] You: D4  (赤)
+ST_Y_RETRY = 308  : [シアン●]:Retry  [赤●]:Quit  (retry_mode時のみ)
+```
+
+`fill_rect` の高さを 88→92px に拡張（228+92=320、画面下端まで）。
+
+---
+
+## RVS8_PIOSW.ASM: GO_WAIT を SIOA/PIOB 並行ポーリングに変更 (2026-04-10)
+
+終局の `r:Retry or q:Quit ?` プロンプトで PIOB スイッチ（PB0/PB2）も受け付けるよう修正。
+
+### 変更箇所: GO_WAIT (GameOver ルーティン内)
+
+旧: `CALL GetChar`（SIOA のみ、ブロッキング）  
+新: SIOA と PIOB を交互にポーリング（ノンブロッキング）
+
+```asm
+GO_WAIT:
+  SIOA RDRF ビット確認 → データあり → GO_SIOA（既存の文字受信処理）
+  PIOB AND 05H 確認    → PB0/PB2 押下検出
+    デバウンス → 離し待ち → A='r' or 'q' → PutChar → GO_CHK
+GO_SIOA:
+  IN A,(SIOA_DAT) → PutChar → 大文字→小文字変換 → GO_CHK
+```
+
+### スイッチ割り当て (GO_WAIT 専用)
+
+| ピン | ビット | 動作 |
+|------|--------|------|
+| PB0  | bit0   | 'r' → リトライ |
+| PB2  | bit2   | 'q' → 終了 |
+
+`PutChar` でエコーするため Pico 側でも文字を受信でき、表示更新に利用可能。
+
+---
+
 ## 次回やること
 
 1. ~~`RVS8_MM1_MOB.ASM` でAI 1ターンの処理時間を実測~~ ✓ 完了
@@ -442,6 +524,7 @@ tft.circle(72, ST_Y_SCORE, STONE_R, COL_STONE_X)        # O石の輪郭
 3. ~~スイッチ入力を Z80 PIO 経由に移管~~ ✓ 完了 (`RVS8_PIOSW.ASM`)
 4. ~~`RVS8_PIOSW.ASM` を実機でアセンブル・動作確認~~ ✓ 完了
 5. ~~`boardDisplay.py` の描画部分の調整・改善~~ ✓ 完了 (`gameDisplay.py`)
+6. `RVS8_PIOSW.ASM` GO_WAIT 変更を実機でアセンブル・動作確認
 
 ---
 
