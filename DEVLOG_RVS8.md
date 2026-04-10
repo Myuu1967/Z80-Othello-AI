@@ -525,6 +525,10 @@ GO_SIOA:
 4. ~~`RVS8_PIOSW.ASM` を実機でアセンブル・動作確認~~ ✓ 完了
 5. ~~`boardDisplay.py` の描画部分の調整・改善~~ ✓ 完了 (`gameDisplay.py`)
 6. `RVS8_PIOSW.ASM` GO_WAIT 変更を実機でアセンブル・動作確認
+7. `gameDisplay.py` 勝者行を石アイコン付きで表示
+   - `"BLACK(X) wins"` → [黒●] `BLACK wins`（4行目、x=26 テキスト + x=14 黒石アイコン）
+   - `"WHITE(O) wins"` → [白○] `WHITE wins`（4行目、x=26 テキスト + x=14 白石アイコン）
+   - `"Draw"` はアイコンなしでそのまま表示
 
 ---
 
