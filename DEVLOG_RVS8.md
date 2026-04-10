@@ -524,15 +524,34 @@ GO_SIOA:
 3. ~~スイッチ入力を Z80 PIO 経由に移管~~ ✓ 完了 (`RVS8_PIOSW.ASM`)
 4. ~~`RVS8_PIOSW.ASM` を実機でアセンブル・動作確認~~ ✓ 完了
 5. ~~`boardDisplay.py` の描画部分の調整・改善~~ ✓ 完了 (`gameDisplay.py`)
-6. `RVS8_PIOSW.ASM` GO_WAIT 変更を実機でアセンブル・動作確認
+6. ~~`RVS8_PIOSW.ASM` GO_WAIT 変更を実機でアセンブル・動作確認~~ ✓ 完了
 7. `gameDisplay.py` 勝者行を石アイコン付きで表示
    - `"BLACK(X) wins"` → [黒●] `BLACK wins`（4行目、x=26 テキスト + x=14 黒石アイコン）
    - `"WHITE(O) wins"` → [白○] `WHITE wins`（4行目、x=26 テキスト + x=14 白石アイコン）
    - `"Draw"` はアイコンなしでそのまま表示
-8. `gameDisplay.py` 5行目リトライ表示のタイミング修正
-   - **原因**: `MSG_RETRYQ` 末尾に `\n` がなく GO_WAIT でブロックするため行パーサーが解析できない
-   - **対策**: 勝者行（`wins` / `DRAW`）受信時に `retry_mode = True` にする（プロンプト到着を待たない）
-   - 実測: 'r' 入力→エコー→NEWLINE が届いた瞬間に解析され一瞬だけ表示されて消える動作を確認済み
+8. ~~`gameDisplay.py` 5行目リトライ表示のタイミング修正~~ ✓ 完了
+   - **原因**: `MSG_RETRYQ` 末尾に `\n` がなく行パーサーが解析できない
+   - **対策**: 勝者行（`wins` / `DRAW`）受信時に `retry_mode = True` をセット（プロンプト到着を待たない）
+   - `r:Retry` ハンドラは死んだコードのため削除
+
+---
+
+## RVS8_PIOSW.ASM GO_WAIT 実機確認 (2026-04-10)
+
+- GAME OVER 後に `r:Retry or q:Quit ?` 表示 ✓
+- SIOA キーボードから `r` / `q` 入力でリトライ・終了 ✓
+- PIOB スイッチから操作 ✓
+  - PB0 → `r`（リトライ）
+  - PB2 → `q`（終了）
+  - PB1・PB3 → 無反応（意図通り）
+- Pico `gameDisplay.py` でリトライ表示（5行目）が勝者行と同時に表示 ✓
+
+### 未確認項目
+
+- DRAW（引き分け）時の表示
+- PASS 連続2回による終局
+
+→ 4×4 バージョンで意図的に再現しやすいため、そちらで改良版を作成予定
 
 ---
 
