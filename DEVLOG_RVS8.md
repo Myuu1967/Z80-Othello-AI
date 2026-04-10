@@ -376,16 +376,62 @@ PB0↔PB2、PB1↔PB3 を入れ替え:
 | PB2  | 上（行--） |
 | PB3  | 下（行++） |
 | PB4  | Enter |
-| PB5  | 右（列++） ← PB1 不良のため代替 |
+| PB1  | 右（列++） |
 
-### PB1 不良対応
+### トラブルシュート記録
 
-PB1 ピンが動作不良（回路・スイッチ交換後も改善せず → PIO ピン自体の問題と判断）。  
-PB5 を右入力に割り当て、`WaitSwPress` の AND マスクを `1FH` → `3DH` に変更（bit1 除外・bit5 追加）。
+- **PB1 不良と誤判断** → 原因はブレッドボード不良。新ブレッドボードで PB1 正常動作確認。
+- **全SW無反応** → `WaitSwPress` の `WSP_RELEASE` ループ詰まりが原因。PB0/PB5 が未配線でフローティングLOWとなり「常時押下」と誤認。AND マスクを `1CH`（PB2/3/4のみ）に絞り診断 → 原因特定後 `1FH` に戻す。
+- **Mode1 試行** → Z80 PIO Mode1 はストローブラッチ方式のため IN 命令でのポーリング不可。Mode3 に戻す。
 
 ### Debounce 短縮
 
-≈20ms (B=79) → **≈15ms (B=59)** に短縮。動作に問題なければこのまま維持。
+≈20ms (B=79) → **≈15ms (B=59)** に短縮。動作確認済み。
+
+### 最終スイッチ配置（動作確認済み）
+
+| ピン | ビット | 役割 |
+|------|--------|------|
+| PB0  | bit0   | 左（列--） |
+| PB1  | bit1   | 右（列++） |
+| PB2  | bit2   | 上（行--） |
+| PB3  | bit3   | 下（行++） |
+| PB4  | bit4   | Enter |
+
+AND マスク: `1FH`（bit0〜4）
+
+---
+
+## gameDisplay.py 作成 (2026-04-10)
+
+`boardDisplay.py` を全面的に整理・改良した新ファイル。
+
+### 主な変更点
+
+| 項目 | boardDisplay.py | gameDisplay.py |
+|------|----------------|----------------|
+| スコア表示 | テキストのみ `X:04 O:04` | テキスト + 石アイコン（塗りつぶし円）を追加 |
+| AI手表示 | あり | あり（シアン強調） |
+| 人の手表示 | `Move: XX` をリアルタイム追跡 | `You: XX` 表示 |
+| ステータスエリア | 3行 | 4行（ST_Y_SCORE/MOVE/TIME/HUMAN） |
+| GAME OVER | 部分対応 | `GAME OVER` + 勝者行 + リトライ対応 |
+
+### ステータスエリアレイアウト (Y座標)
+
+```
+ST_Y_SCORE = 236  : [●]04  [○]04   ← 石アイコン付きスコア
+ST_Y_MOVE  = 254  : AI moves to C8  ← シアン
+ST_Y_TIME  = 272  : Time:687ms
+ST_Y_HUMAN = 290  : You: D4         ← 赤
+```
+
+### draw_status() の石アイコン
+
+```python
+tft.fill_circle(14, ST_Y_SCORE, STONE_R, COL_STONE_X)   # X石（黒）
+tft.fill_circle(72, ST_Y_SCORE, STONE_R, COL_STONE_O)   # O石（白）
+tft.circle(72, ST_Y_SCORE, STONE_R, COL_STONE_X)        # O石の輪郭
+```
 
 ---
 
@@ -394,8 +440,8 @@ PB5 を右入力に割り当て、`WaitSwPress` の AND マスクを `1FH` → `
 1. ~~`RVS8_MM1_MOB.ASM` でAI 1ターンの処理時間を実測~~ ✓ 完了
 2. ~~`boardDisplay.py` を実機で動作確認~~ ✓ 完了
 3. ~~スイッチ入力を Z80 PIO 経由に移管~~ ✓ 完了 (`RVS8_PIOSW.ASM`)
-4. ~~`RVS8_PIOSW.ASM` を実機でアセンブル・動作確認~~ → 調整中（PB5対応版を確認待ち）
-5. `boardDisplay.py` の描画部分の調整・改善
+4. ~~`RVS8_PIOSW.ASM` を実機でアセンブル・動作確認~~ ✓ 完了
+5. ~~`boardDisplay.py` の描画部分の調整・改善~~ ✓ 完了 (`gameDisplay.py`)
 
 ---
 
