@@ -180,9 +180,78 @@ def feed_byte(b):
                 human_text = "You: " + pos
                 draw_status()
 
+# ─── 行単位パーサー (UART・ログ再生で共用) ──────────
+def process_line(line):
+    """1行分の文字列を解析して盤面・ステータスを更新する"""
+    global score_text, move_text, human_text, player_stone, retry_mode
+
+    row_idx, cells = parse_board_line(line)
+    if row_idx is not None:
+        board[row_idx] = cells
+        for col in range(8):
+            draw_stone(col, row_idx, cells[col])
+        if row_idx == 0:
+            retry_mode = False
+            human_text = ""
+
+    elif line.startswith('X:') and 'O:' in line:
+        score_text = line
+        draw_status()
+
+    elif line.startswith('AI moves to'):
+        move_text  = line
+        human_text = ""
+        draw_status()
+
+    elif line == 'GAME OVER':
+        move_text  = "GAME OVER"
+        human_text = ""
+        draw_status()
+
+    elif 'wins' in line or line == 'DRAW':
+        human_text = line
+        retry_mode = True
+        draw_status()
+
+    elif 'You are BLACK' in line:
+        player_stone = 'X'
+        draw_status()
+    elif 'You are WHITE' in line:
+        player_stone = 'O'
+        draw_status()
+
+    elif line in ('R', 'r'):
+        retry_mode   = False
+        player_stone = None
+        score_text   = "X:-- O:--"
+        move_text    = ""
+        human_text   = ""
+        draw_status()
+
+# ─── ログ再生 ─────────────────────────────────────────
+def replay_log(filename, line_delay_ms=400):
+    """
+    Pico ファイルシステム上のログファイルを行単位で再生する。
+    Z80 実機なしで表示確認ができる。
+    ファイルが存在しない場合は何もしない。
+    """
+    try:
+        with open(filename) as f:
+            lines = f.readlines()
+    except OSError:
+        return
+    for raw in lines:
+        line = raw.strip('\r\n ')
+        if line:
+            process_line(line)
+        utime.sleep_ms(line_delay_ms)
+
 # ─── 初期描画 ─────────────────────────────────────────
 draw_board()
 draw_status()
+
+# ログファイルがあれば Z80 なしで表示テスト (/replay.txt)
+replay_log('/replay.txt')
 
 # ─── メインループ ─────────────────────────────────────
 line_buf = b''
@@ -193,74 +262,15 @@ while True:
     if uart.any():
         data = uart.read(uart.any())
 
-        # バイト単位: Move: カーソル追跡
         for byte in data:
             feed_byte(byte)
 
-        # 行単位: 盤面・スコア・AI手・GAME OVER 解析
         line_buf += data
         while b'\n' in line_buf:
             idx      = line_buf.index(b'\n')
             raw      = line_buf[:idx]
             line_buf = line_buf[idx + 1:]
             line     = raw.decode('utf-8', 'ignore').strip('\r ')
-
-            # 盤面行 "N X O . ..."
-            row_idx, cells = parse_board_line(line)
-            if row_idx is not None:
-                board[row_idx] = cells
-                for col in range(8):
-                    draw_stone(col, row_idx, cells[col])
-                if row_idx == 0:        # 新しい盤面の先頭行 → 手テキスト・リトライをクリア
-                    retry_mode = False
-#                     move_text  = ""
-                    human_text = ""
-
-            # スコア行 "X:04 O:04"
-            elif line.startswith('X:') and 'O:' in line:
-                score_text = line
-#                 score_text[0] = ' '
-#                 score_text[1] = ' '
-#                 score_text[5] = ' '
-#                 score_text[6] = ' '
-                draw_status()
-
-            # AI手行 "AI moves to C8"
-            elif line.startswith('AI moves to'):
-                move_text  = line
-                human_text = ""
-                draw_status()
-        
-            # GAME OVER
-            elif line == 'GAME OVER':
-                move_text  = "GAME OVER"
-                human_text = ""
-                draw_status()
-
-            # 勝者行 "BLACK(X) wins" / "WHITE(O) wins" / "DRAW"
-            # MSG_RETRYQ は末尾に \n がないため行パーサーで捕捉できない。
-            # プロンプト行を待たずにここで retry_mode = True をセットする。
-            elif 'wins' in line or line == 'DRAW':
-                human_text = line
-                retry_mode = True
-                draw_status()
-
-            # プレイヤー色通知 "You go first. You are BLACK (X)."
-            #                  "AI goes first. You are WHITE (O)."
-            elif 'You are BLACK' in line:
-                player_stone = 'X'
-                draw_status()
-            elif 'You are WHITE' in line:
-                player_stone = 'O'
-                draw_status()
-
-            # 再スタート
-            elif line == 'R' or line == 'r':
-                retry_mode   = False
-                player_stone = None
-                score_text   = "X:-- O:--"
-                move_text    = ""
-                human_text   = ""
-                draw_status()
+            process_line(line)
 
     utime.sleep_ms(10)
