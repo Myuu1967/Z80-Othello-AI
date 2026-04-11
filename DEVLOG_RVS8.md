@@ -558,12 +558,83 @@ GO_SIOA:
 
 ---
 
+## ドキュメント整備 (2026-04-11)
+
+- `CLAUDE.md` 更新: 現行ファイルを `RVS8_PIOSW.ASM` に修正、PIOB仕様追記
+- PIOポートアドレス誤記を訂正
+  - 旧: PIOA CMD=0CH DATA=0DH（誤）
+  - 正: PIOA DATA=1CH CMD=1DH / PIOB DATA=1EH CMD=1FH
+  - ASMコード自体は最初から正しく記述されており動作への影響なし
+- `DEVLOG_RVS8.md` ファイル系譜に `RVS8_PIOSW.ASM` を追記
+
+---
+
+## gameDisplay.py ログ再生機能追加 (2026-04-11)
+
+Z80実機なしで表示テストができるログ再生機能を追加。
+
+### 変更内容
+
+- 行処理ブロックを `process_line(line)` 関数に切り出し（UART・ログ再生で共用）
+- `replay_log(filename, line_delay_ms=400)` 追加
+  - Pico フラッシュ上の `/replay.txt` を行単位で再生
+  - ファイルなければ何もしない（通常運用への影響ゼロ）
+  - MicroPython の LittleFS ファイルシステムで動作確認予定
+
+---
+
+## RVS8_MM2_AB.ASM 作成 (2026-04-11)
+
+`RVS8_PIOSW.ASM` をベースに depth-2 minimax + α-β 枝刈りの準備ファイルを作成。
+
+### ファイル系譜更新
+
+```
+RVS8_MM1_MOB.ASM
+  └─ RVS8_PIOSW.ASM  (現行・PIObスイッチ入力)
+       └─ RVS8_MM2_AB.ASM  (depth-2準備・以降はこちらで開発)
+```
+
+### SaveBoard/RestoreBoard 2スロット化（案B: HLパラメータ渡し）
+
+| 変更点 | 内容 |
+|---|---|
+| `BOARD_SAVE` → `BOARD_SAVE1`+`BOARD_SAVE2` | 各64バイト、計128バイト |
+| `SaveBoard`: HL=保存先 | `EX DE,HL` → `LD HL,BOARD` → `LDIR` |
+| `RestoreBoard`: HL=復元元 | `LD DE,BOARD` → `LDIR` |
+| `AIset` 呼び出し箇所 | `LD HL,BOARD_SAVE1` を前置 |
+
+depth-3以上はバッファ追加のみで対応可能。
+
+### OppBestScore コメント整備
+
+- フロー各ブロックにラベル説明追記
+- depth-2改造方針: `CountAllFlips` → `SaveBoard(SAVE2)/ApplyMove/評価/RestoreBoard` に拡張する箇所を明示
+- α-β挿入ポイント: `OBS_BEST` 更新直後に `<<< β-CUTOFF HERE` とマーク
+  - 条件: `(255 - OBS_BEST) <= alpha` なら `OBS_END` へジャンプ
+- `OBS_END` ラベル追加（早期脱出先）
+
+---
+
+## 次回やること
+
+1. `RVS8_MM2_AB.ASM` を実機でアセンブル・動作確認（RVS8_PIOSWと同等動作のはず）
+2. `gameDisplay.py` 勝者行を石アイコン付きで表示
+   - `"BLACK(X) wins"` → [黒●] `BLACK wins`（4行目）
+   - `"WHITE(O) wins"` → [白○] `WHITE wins`（4行目）
+   - `"Draw"` はアイコンなしそのまま
+3. `gameDisplay.py` ログ再生機能の動作確認（`/replay.txt` を用意）
+4. `OppBestScore_d2` 実装（BOARD_SAVE2使用・実際に着手して評価）
+5. α-β 枝刈り実装
+
+---
+
 ## 候補機能 (未着手)
 
 | 機能 | 概要 | 備考 |
 |---|---|---|
-| 2手先読み | depth-2 minimax | 計算量 ≈ depth-1の64倍 → α-β必須 |
-| α-β 枝刈り | 16bit α/β 値をスタック管理 | depth-2 以上に不可欠 |
+| depth-2 minimax | OppBestScore_d2 実装 | BOARD_SAVE2スロット準備済み |
+| α-β 枝刈り | β-CUTOFFポイント明示済み | OBS_END ラベルあり |
 | 安定石評価 | 角から連続する石を加点 | 算出コスト高 |
 | 終盤完全読み | 残り≤12手で完全 minimax | 終盤は合法手が絞られ高速 |
 | 盤面重み合計差 | Σweight(AI石) - Σweight(相手石) | 既存の16bit演算で対応可 |

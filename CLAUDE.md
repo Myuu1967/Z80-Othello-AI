@@ -22,10 +22,11 @@ RVS8_GREEDY.ASM
        └─ RVS8_MINIMAX1.ASM
             └─ RVS8_MINIMAX1_16.ASM
                  └─ RVS8_MM1_MOB.ASM
-                      └─ RVS8_PIOSW.ASM  ← 【現行最新】
+                      └─ RVS8_PIOSW.ASM  ← 実機確認済み最新
+                           └─ RVS8_MM2_AB.ASM  ← 開発中 (depth-2準備)
 ```
 
-**作業対象は常に `F:\oke\Z80\ASM\オセロ\RVS8_PIOSW.ASM`**
+**作業対象は `F:\oke\Z80\ASM\オセロ\RVS8_MM2_AB.ASM`**
 
 ## 評価式
 
