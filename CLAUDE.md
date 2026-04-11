@@ -10,7 +10,8 @@
 | CPU | Z80 (Super AKI-80) |
 | クロック | 10MHz (1T = 0.1μs) |
 | シリアル | SIOA: DAT=18H, CTL=19H |
-| PIO | PIOA_CMD=0CH, PIOA_DATA=0DH |
+| PIOA | CMD=0CH, DATA=0DH（D7: 計測トリガ出力） |
+| PIOB | CMD=1EH, DATA=1FH（SW0-SW4: スイッチ入力, Mode3） |
 | CTC | **利用不可**（Super AKI-80では動作しない） |
 
 ## 現行ファイル構成
@@ -20,10 +21,11 @@ RVS8_GREEDY.ASM
   └─ RVS8_POSWEIGHT.ASM
        └─ RVS8_MINIMAX1.ASM
             └─ RVS8_MINIMAX1_16.ASM
-                 └─ RVS8_MM1_MOB.ASM  ← 【現行最新】
+                 └─ RVS8_MM1_MOB.ASM
+                      └─ RVS8_PIOSW.ASM  ← 【現行最新】
 ```
 
-**作業対象は常に `F:\oke\Z80\ASM\オセロ\RVS8_MM1_MOB.ASM`**
+**作業対象は常に `F:\oke\Z80\ASM\オセロ\RVS8_PIOSW.ASM`**
 
 ## 評価式
 
@@ -44,7 +46,7 @@ mm_score = POS_WEIGHT[ai_pos]        (5〜120)
 ```
 Z80 PIOA D7 ──→ Pico GPIO15 → measureTimeWithZ80.py
 Z80 SIOA  ──┬──→ PC ターミナル
-            └──→ Pico UART → LCD盤面描画（未完成）
+            └──→ Pico UART → LCD盤面描画（gameDisplay.py・動作確認済み）
 ```
 
 ## Gitコミット
