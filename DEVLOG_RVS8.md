@@ -22,7 +22,8 @@ RVS8_GREEDY.ASM
   └─ RVS8_POSWEIGHT.ASM
        └─ RVS8_MINIMAX1.ASM
             └─ RVS8_MINIMAX1_16.ASM
-                 └─ RVS8_MM1_MOB.ASM  ← 現行最新
+                 └─ RVS8_MM1_MOB.ASM
+                      └─ RVS8_PIOSW.ASM  ← 現行最新
 ```
 
 ---
@@ -36,6 +37,7 @@ RVS8_GREEDY.ASM
 | RVS8_MINIMAX1.ASM | Minimax depth-1 | (weight>>1) + ((255-opp)>>1) | ✓ バグ修正済 |
 | RVS8_MINIMAX1_16.ASM | Minimax depth-1 16bit | weight + (255-opp) | ✓ |
 | RVS8_MM1_MOB.ASM | Minimax depth-1 16bit+Mob | weight + (255-opp) + (ai_mob-opp_mob+64) | ✓ |
+| RVS8_PIOSW.ASM | 同上 + PIObスイッチ入力 | 同上 | ✓ 現行最新 |
 
 ---
 
