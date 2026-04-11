@@ -2,6 +2,7 @@
 
 対象ハード: Super AKI-80 (Z80)  
 シリアル: SIOA DAT=18h CTL=19h  
+PIOA: DATA=1CH CMD=1DH / PIOB: DATA=1EH CMD=1FH  
 作業日: 2026-04-01 ～
 
 ---
@@ -314,7 +315,7 @@ Time:687ms         ← 処理時間（ノンブロッキング計測）
 
 | 追加要素 | 内容 |
 |---|---|
-| `PIOB_DATA=1FH, PIOB_CMD=1EH` | PIOB ポート定義 |
+| `PIOB_DATA=1EH, PIOB_CMD=1FH` | PIOB ポート定義 |
 | `SW_UP/DOWN/LEFT/RIGHT/ENTER` | スイッチビット定数 (01H〜10H) |
 | `PLR_COL, PLR_ROW` | カーソル変数 |
 | `InitPIOB` | PIOB を Mode3 全ビット入力で初期化 |

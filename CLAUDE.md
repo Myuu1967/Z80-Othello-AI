@@ -10,8 +10,8 @@
 | CPU | Z80 (Super AKI-80) |
 | クロック | 10MHz (1T = 0.1μs) |
 | シリアル | SIOA: DAT=18H, CTL=19H |
-| PIOA | CMD=0CH, DATA=0DH（D7: 計測トリガ出力） |
-| PIOB | CMD=1EH, DATA=1FH（SW0-SW4: スイッチ入力, Mode3） |
+| PIOA | DATA=1CH, CMD=1DH（D7: 計測トリガ出力） |
+| PIOB | DATA=1EH, CMD=1FH（SW0-SW4: スイッチ入力, Mode3） |
 | CTC | **利用不可**（Super AKI-80では動作しない） |
 
 ## 現行ファイル構成
