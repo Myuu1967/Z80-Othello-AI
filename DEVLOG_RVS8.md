@@ -624,7 +624,7 @@ depth-3以上はバッファ追加のみで対応可能。
    - `"WHITE(O) wins"` → [白○] `WHITE wins`（4行目）
    - `"Draw"` はアイコンなしそのまま
 3. ~~`gameDisplay.py` ログ再生機能の動作確認（`/replay.txt` を用意）~~ ✓ 完了
-4. `OppBestScore_d2` 実装（BOARD_SAVE2使用・実際に着手して評価）
+4. ~~`OppBestScore_d2` 実装（BOARD_SAVE2使用・実際に着手して評価）~~ ✓ 完了
 5. α-β 枝刈り実装
 
 ---
@@ -671,6 +671,31 @@ depth-3以上はバッファ追加のみで対応可能。
 - [シアン●]:1st(X)　[赤●]:2nd(O) をアイコン付きで表示
 - `You are BLACK/WHITE` 受信で `choose_mode = False`（通常スコア表示に戻る）
 - リトライ・新ゲーム開始時にもリセット
+
+---
+
+## OppBestScore_d2 実装・実機確認 (2026-04-12)
+
+depth-2 minimax を実装。`OppBestScore` の代替として `AIset` から呼び出す。
+
+### 実装内容
+
+- 変数追加: `OBS2_MIN_AI`（AI最善スコアの最小値）
+- `OppBestScore_d2`: 相手の各合法手に対して BOARD_SAVE2 へ保存 → ApplyMove → AI応手探索 → 復元
+  - inner loop: AI の全合法手で `max(POS_WEIGHT+flips)` を求める
+  - 相手は AI最善スコアを最小化する手を選ぶ (minimax)
+  - 返り値: `opp_best = 255 - min_j(ai_best_j)`
+- `AIset`: `CALL OppBestScore` → `CALL OppBestScore_d2` に切り替え
+
+### 実測処理時間 (depth-2, α-β なし)
+
+| 局面 | 処理時間 |
+|------|----------|
+| 最大（複雑局面） | ≈ 6 秒 |
+
+理論上 depth-1 の最大64倍 (≈45秒) だが、実際の盤面では合法手が少なく
+外/内ループの有効反復が絞られるため大幅に速い。
+→ α-β 枝刈りでさらなる高速化が期待できる。
 
 ---
 
