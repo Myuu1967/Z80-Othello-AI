@@ -22,25 +22,32 @@ RVS8_GREEDY.ASM
        └─ RVS8_MINIMAX1.ASM
             └─ RVS8_MINIMAX1_16.ASM
                  └─ RVS8_MM1_MOB.ASM
-                      └─ RVS8_PIOSW.ASM  ← 実機確認済み最新
-                           └─ RVS8_MM2_AB.ASM  ← 開発中 (depth-2準備)
+                      └─ RVS8_PIOSW.ASM  ← 実機確認済み
+                           └─ RVS8_MM2_AB.ASM  ← 現行最新 (depth-2実装済み)
 ```
 
 **作業対象は `F:\oke\Z80\ASM\オセロ\RVS8_MM2_AB.ASM`**
 
-## 評価式
+## 評価式 (depth-2)
 
 ```
-mm_score = POS_WEIGHT[ai_pos]        (5〜120)
-         + (255 - opp_best)          (相手抑制)
-         + (ai_mob - opp_mob + 64)   (モビリティ差)
+AIset の mm_score:
+  mm_score = POS_WEIGHT[ai_pos]        (5〜120)
+           + (255 - opp_best)          (相手抑制)
+           + (ai_mob - opp_mob + 64)   (モビリティ差)
+
+OppBestScore_d2 の opp_best:
+  opp_best = 255 - min_j( max_k(POS_WEIGHT[k] + flips[k]) )
+  相手は AI 最善スコアが最小になる手を選ぶ (minimax)
 ```
 
 ## 既知の注意事項
 
 - `ApplyMove` は B,C を破壊 → **PUSH BC は ApplyMove より前**
 - `CountMobility` は A を破壊 → **PUSH AF / POP AF 必須**
+- `CountAllFlips` は AF,BC,DE,HL,IX,IY を破壊 → 呼び出し元で PUSH BC / PUSH DE 必須
 - CTC 使用不可 → 計測は Pico 外部計測システムを使用
+- `OppBestScore_d2` 内側ループで D が上書きされる → OD2_COL 先頭で毎回 `LD A,(HumSide); LD D,A`
 
 ## 計測システム
 
