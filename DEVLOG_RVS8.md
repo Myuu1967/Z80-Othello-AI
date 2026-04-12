@@ -619,13 +619,29 @@ depth-3以上はバッファ追加のみで対応可能。
 ## 次回やること
 
 1. `RVS8_MM2_AB.ASM` を実機でアセンブル・動作確認（RVS8_PIOSWと同等動作のはず）
-2. `gameDisplay.py` 勝者行を石アイコン付きで表示
+2. ~~`gameDisplay.py` 勝者行を石アイコン付きで表示~~ ✓ 完了
    - `"BLACK(X) wins"` → [黒●] `BLACK wins`（4行目）
    - `"WHITE(O) wins"` → [白○] `WHITE wins`（4行目）
    - `"Draw"` はアイコンなしそのまま
-3. `gameDisplay.py` ログ再生機能の動作確認（`/replay.txt` を用意）
+3. ~~`gameDisplay.py` ログ再生機能の動作確認（`/replay.txt` を用意）~~ ✓ 完了
 4. `OppBestScore_d2` 実装（BOARD_SAVE2使用・実際に着手して評価）
 5. α-β 枝刈り実装
+
+---
+
+## gameDisplay.py 勝者行アイコン表示 (2026-04-12)
+
+`winner_stone` 変数を追加し、勝者確定時に石アイコンを4行目に表示。
+
+### 変更内容
+
+- `winner_stone = None` を変数追加
+- `process_line`: `'wins' in line` で `BLACK`/`WHITE` を判定し `human_text` を短縮・`winner_stone` をセット
+  - `"BLACK(X) wins"` → `human_text="BLACK wins"`, `winner_stone='X'`
+  - `"WHITE(O) wins"` → `human_text="WHITE wins"`, `winner_stone='O'`
+  - `"DRAW"` → `winner_stone=None`（アイコンなし）
+- `draw_status`: `retry_mode` 中はアイコン種別を `winner_stone` で決定（それ以外は `player_stone`）
+- リトライ・新ゲーム開始時に `winner_stone = None` リセット
 
 ---
 

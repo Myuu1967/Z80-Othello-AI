@@ -89,9 +89,10 @@ def draw_status():
         tft.draw(vector_font, time_text,   8, ST_Y_TIME,  COL_TEXT,  0.7)
     if human_text:
         tft.draw(vector_font, human_text, 26, ST_Y_HUMAN, COL_HUMAN, 0.7)
-        if player_stone == 'X':
+        stone = winner_stone if retry_mode else player_stone
+        if stone == 'X':
             tft.fill_circle(14, ST_Y_HUMAN, STONE_R, COL_STONE_X)
-        elif player_stone == 'O':
+        elif stone == 'O':
             tft.fill_circle(14, ST_Y_HUMAN, STONE_R, COL_STONE_O)
             tft.circle(14, ST_Y_HUMAN, STONE_R, COL_STONE_X)
 
@@ -108,6 +109,7 @@ move_text    = ""
 time_text    = ""
 human_text   = ""
 player_stone = None   # 'X' (黒) or 'O' (白)、ゲーム開始時に確定
+winner_stone = None   # 'X' or 'O'、勝者確定時にセット（Drawはそのまま None）
 retry_mode   = False  # True = "r:Retry or q:Quit ?" プロンプト表示中
 
 # ─── ノンブロッキング計測 ─────────────────────────────
@@ -183,7 +185,7 @@ def feed_byte(b):
 # ─── 行単位パーサー (UART・ログ再生で共用) ──────────
 def process_line(line):
     """1行分の文字列を解析して盤面・ステータスを更新する"""
-    global score_text, move_text, human_text, player_stone, retry_mode
+    global score_text, move_text, human_text, player_stone, winner_stone, retry_mode
 
     row_idx, cells = parse_board_line(line)
     if row_idx is not None:
@@ -191,8 +193,9 @@ def process_line(line):
         for col in range(8):
             draw_stone(col, row_idx, cells[col])
         if row_idx == 0:
-            retry_mode = False
-            human_text = ""
+            retry_mode   = False
+            winner_stone = None
+            human_text   = ""
 
     elif line.startswith('X:') and 'O:' in line:
         score_text = line
@@ -209,7 +212,15 @@ def process_line(line):
         draw_status()
 
     elif 'wins' in line or line == 'DRAW':
-        human_text = line
+        if 'BLACK' in line:
+            human_text   = "BLACK wins"
+            winner_stone = 'X'
+        elif 'WHITE' in line:
+            human_text   = "WHITE wins"
+            winner_stone = 'O'
+        else:
+            human_text   = "DRAW"
+            winner_stone = None
         retry_mode = True
         draw_status()
 
@@ -223,6 +234,7 @@ def process_line(line):
     elif line in ('R', 'r'):
         retry_mode   = False
         player_stone = None
+        winner_stone = None
         score_text   = "X:-- O:--"
         move_text    = ""
         human_text   = ""
