@@ -651,6 +651,29 @@ depth-3以上はバッファ追加のみで対応可能。
 
 ---
 
+## 先後手選択機能追加 (2026-04-12)
+
+### Z80側 (RVS8_MM2_AB.ASM)
+
+`DecideFirstTurn` をランダム決定からスイッチ選択に変更。
+
+- メッセージ: `"Choose: SW0=1st(X) SW2=2nd(O)"`
+- SW0(bit0) → 先手(黒/X) / SW2(bit2) → 後手(白/O)
+- SIOA キーボード: `'1'`=先手 / `'2'`=後手（デバッグ用）
+- PIOB マスク: `05H`（bit0・bit2のみ検出）
+- 選択後に `NEWLINE` を出力してから色通知メッセージを表示
+
+### Pico側 (gameDisplay.py)
+
+`Choose:` 行受信時に選択UI を ST_Y_SCORE 行に表示。
+
+- `choose_mode` 変数追加（True=選択中）
+- [シアン●]:1st(X)　[赤●]:2nd(O) をアイコン付きで表示
+- `You are BLACK/WHITE` 受信で `choose_mode = False`（通常スコア表示に戻る）
+- リトライ・新ゲーム開始時にもリセット
+
+---
+
 ## 候補機能 (未着手)
 
 | 機能 | 概要 | 備考 |

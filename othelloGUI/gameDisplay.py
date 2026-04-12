@@ -77,7 +77,12 @@ def draw_stone(col, row, piece):
 def draw_status():
     """盤面下のステータスエリア5行を更新する"""
     tft.fill_rect(0, 228, 240, 92, COL_BG)
-    if score_text:
+    if choose_mode:
+        tft.draw(vector_font, ":1st(X)", 26,  ST_Y_SCORE, COL_AI,    0.7)
+        tft.fill_circle(14,  ST_Y_SCORE, STONE_R, COL_AI)
+        tft.draw(vector_font, ":2nd(O)", 142, ST_Y_SCORE, COL_HUMAN, 0.7)
+        tft.fill_circle(130, ST_Y_SCORE, STONE_R, COL_HUMAN)
+    elif score_text:
         tft.draw(vector_font, score_text,  8, ST_Y_SCORE, COL_TEXT,  0.7)
         tft.fill_circle(14, ST_Y_SCORE, STONE_R, COL_STONE_X)
         tft.fill_circle(72, ST_Y_SCORE, STONE_R, COL_STONE_O)
@@ -111,6 +116,7 @@ human_text   = ""
 player_stone = None   # 'X' (黒) or 'O' (白)、ゲーム開始時に確定
 winner_stone = None   # 'X' or 'O'、勝者確定時にセット（Drawはそのまま None）
 retry_mode   = False  # True = "r:Retry or q:Quit ?" プロンプト表示中
+choose_mode  = False  # True = 先後手選択中
 
 # ─── ノンブロッキング計測 ─────────────────────────────
 _t_start   = 0
@@ -185,7 +191,7 @@ def feed_byte(b):
 # ─── 行単位パーサー (UART・ログ再生で共用) ──────────
 def process_line(line):
     """1行分の文字列を解析して盤面・ステータスを更新する"""
-    global score_text, move_text, human_text, player_stone, winner_stone, retry_mode
+    global score_text, move_text, human_text, player_stone, winner_stone, retry_mode, choose_mode
 
     row_idx, cells = parse_board_line(line)
     if row_idx is not None:
@@ -224,15 +230,22 @@ def process_line(line):
         retry_mode = True
         draw_status()
 
+    elif line.startswith('Choose:'):
+        choose_mode = True
+        draw_status()
+
     elif 'You are BLACK' in line:
+        choose_mode  = False
         player_stone = 'X'
         draw_status()
     elif 'You are WHITE' in line:
+        choose_mode  = False
         player_stone = 'O'
         draw_status()
 
     elif line in ('R', 'r'):
         retry_mode   = False
+        choose_mode  = False
         player_stone = None
         winner_stone = None
         score_text   = "X:-- O:--"
