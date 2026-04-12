@@ -618,7 +618,7 @@ depth-3以上はバッファ追加のみで対応可能。
 
 ## 次回やること
 
-1. `RVS8_MM2_AB.ASM` を実機でアセンブル・動作確認（RVS8_PIOSWと同等動作のはず）
+1. ~~`RVS8_MM2_AB.ASM` を実機でアセンブル・動作確認（RVS8_PIOSWと同等動作のはず）~~ ✓ 完了
 2. ~~`gameDisplay.py` 勝者行を石アイコン付きで表示~~ ✓ 完了
    - `"BLACK(X) wins"` → [黒●] `BLACK wins`（4行目）
    - `"WHITE(O) wins"` → [白○] `WHITE wins`（4行目）
@@ -626,6 +626,12 @@ depth-3以上はバッファ追加のみで対応可能。
 3. ~~`gameDisplay.py` ログ再生機能の動作確認（`/replay.txt` を用意）~~ ✓ 完了
 4. `OppBestScore_d2` 実装（BOARD_SAVE2使用・実際に着手して評価）
 5. α-β 枝刈り実装
+
+---
+
+## RVS8_MM2_AB.ASM 実機動作確認 (2026-04-12)
+
+実機アセンブル・動作確認済み。RVS8_PIOSW.ASM と同等動作を確認。
 
 ---
 
