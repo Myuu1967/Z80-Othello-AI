@@ -765,6 +765,32 @@ SIOA_INIT_TBL:
 
 ---
 
+## gameDisplay.py Choose画面 GAME OVER残留バグ修正 (2026-04-14)
+
+### 症状
+リトライ後の先後手選択画面（Choose:）の2行目に "GAME OVER" が残り続ける。
+
+### 原因（2点）
+1. Z80 が 'r' を改行なしでエコー後すぐ "Choose:..." を送信するため、Pico のバッファが `rChoose: SW0=...` になり `startswith('Choose:')` にマッチしなかった
+2. Choose: ハンドラ内で `move_text` をクリアしていなかった
+
+### 修正
+```python
+# 修正前
+elif line.startswith('Choose:'):
+    choose_mode = True
+
+# 修正後
+elif 'Choose:' in line:
+    choose_mode = True
+    move_text   = ""
+    human_text  = ""
+```
+
+実機確認済み：Choose画面の "GAME OVER" 消去・先後手選択正常動作 ✓
+
+---
+
 ## 候補機能 (未着手)
 
 | 機能 | 概要 | 備考 |
