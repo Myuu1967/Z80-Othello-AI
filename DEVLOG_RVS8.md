@@ -791,6 +791,48 @@ elif 'Choose:' in line:
 
 ---
 
+## α-β 枝刈り実装 (2026-04-14)
+
+### 実装箇所
+
+`OppBestScore_d2` の内側ループ (`ID2_ROW/ID2_COL`) に α-cutoff を追加。
+
+### 枝刈り条件
+
+```
+OBS_BEST (現在の AI 最善スコア) >= OBS2_MIN_AI (α値 = これまでの相手最善)
+```
+
+相手は AI スコアを最小化したいので、AI が α 値以上のスコアを出せる相手手は採用されない。
+→ その時点で内側ループを `ID2_END` へジャンプして打ち切る。
+
+### 追加コード (RVS8_MM2_AB.ASM)
+
+```asm
+        LD   (HL),A             ; inner best 更新 (OBS_BEST)
+        ; α-cutoff: OBS_BEST >= OBS2_MIN_AI → 相手はこの手を選ばない → inner終了
+        LD   HL,OBS2_MIN_AI
+        CP   (HL)               ; OBS_BEST vs OBS2_MIN_AI (α)
+        JR   NC,ID2_END         ; OBS_BEST >= α → 枝刈り
+
+ID2_NEXT:
+        ...
+ID2_END:
+        ; inner loop 完了 (正常終了 or α-cutoff)
+```
+
+### ロジック検証
+
+- `OBS2_MIN_AI` 初期値 = FFH → 1回目の外側手は必ず完全探索
+- 枝刈り後、`ID2_END` 以降の `OBS2_MIN_AI` 更新ロジックで `JR NC, OD2_RESTORE` が発火し、OBS2_MIN_AI は正しく更新されない（= 枝刈りは安全）
+- `OBS2_MIN_AI = 0` の場合、以降のすべての外側手の内側ループは最初の合法手で即打ち切り
+
+### 次のステップ
+
+実機でアセンブル・動作確認 → 処理時間を Pico で計測（目標: 2秒以内）
+
+---
+
 ## 候補機能 (未着手)
 
 | 機能 | 概要 | 備考 |
