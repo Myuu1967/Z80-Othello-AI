@@ -230,8 +230,10 @@ def process_line(line):
         retry_mode = True
         draw_status()
 
-    elif line.startswith('Choose:'):
-        choose_mode = True
+    elif 'Choose:' in line:
+        choose_mode  = True
+        move_text    = ""
+        human_text   = ""
         draw_status()
 
     elif 'You are BLACK' in line:
