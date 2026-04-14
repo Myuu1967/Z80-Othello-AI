@@ -1,0 +1,10 @@
+# Z80アセンブラ ビルド成果物
+asm/*.err
+asm/*.hex
+asm/*.lin
+asm/*.lst
+asm/*.sym
+
+# Pico / MicroPython
+othelloGUI/__pycache__/
+othelloGUI/*.pyc

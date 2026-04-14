@@ -1,0 +1,348 @@
+; =========================================
+; 4x4 Othello board print + fixed AI move
+; Created: 2026-02-17
+; Target: Super AKI-80 (SIOA 18h/19h)
+; =========================================
+
+        ORG 8000H
+        JP START
+
+
+; ==== 定数定義 ====
+
+SIOA_DAT    EQU 18H       ; SIOA データポート
+SIOA_CTL    EQU 19H       ; SIOA コマンド/ステータス
+
+; 4x4 盤面の定義
+BOARD_W     EQU 4          ; 列数 A～D
+BOARD_H     EQU 4          ; 行数 1～4
+EMPTY_CHAR  EQU '.'        ; 空きマスの表示
+
+BLACK   EQU 1
+WHITE   EQU 2
+EMPTY   EQU 0
+
+COL_HEADER:   DEFM "  A B C D",0
+MSG_NEWLINE:  DEFM 13,10,0     ; CR LF
+
+ROW_LABEL:  DEFB '1'       ; 現在の行番号（文字）用
+
+
+; 0=空き, 1=黒(X), 2=白(O)
+BOARD:
+        DEFB 0,0,0,0      ; 1行目
+        DEFB 0,2,1,0      ; 2行目 (O X)
+        DEFB 0,1,2,0      ; 3行目 (X O)
+        DEFB 0,0,0,0      ; 4行目
+
+; index: 0=空き,1=黒,2=白
+STONE_CHAR:
+        DEFB '.'      ; 空きマス
+        DEFB 'X'      ; 黒 → ×
+        DEFB 'O'      ; 白 → 〇
+
+AImovePOS DEFB 'A','1', 0
+AImoveMSG DEFM "AI moves to ",0
+
+START:
+        
+; ==== メインエントリ ====
+
+        LD   SP,0FFF0H      ; 
+
+        DI
+        ; SIO 初期化はモニタ任せと仮定
+        CALL    PrintBoard
+        CALL    AIset
+        CALL    PrintBoard
+
+
+
+
+
+
+Hang:
+        JP      Hang
+
+
+; ---------------------------------
+; BOARD の内容を 4x4 で表示する
+;  空き: .   黒: X   白: O
+; ---------------------------------
+PrintBoard:
+        PUSH AF
+        PUSH BC
+        PUSH DE
+        PUSH HL
+
+        ; 1行空ける
+        LD      DE,MSG_NEWLINE
+        CALL    PrintString
+
+        ; 列ヘッダ "  A B C D"
+        LD      DE,COL_HEADER
+        CALL    PrintString
+
+        ; 改行
+        LD      DE,MSG_NEWLINE
+        CALL    PrintString
+
+        ; HL = BOARD 先頭
+        LD      HL,BOARD
+
+        ; 行数 B=4, 行番号 D='1'
+        LD      B,4
+
+RowLoop:
+        ; 行番号 '1','2','3','4'
+        LD      A,'5'	  ; '1' の次の文字
+        SUB     B         ; B=4→'1',3→'2',2→'3',1→'4'
+        CALL    PutChar
+
+        ; スペース1つ
+        LD      A,' '
+        CALL    PutChar
+
+        ; 列ループ C=4
+        LD      C,4
+
+ColLoop:
+        ; BOARD から値を読む (0,1,2)
+        LD      A,(HL)
+        INC     HL
+
+        ; A = 0,1,2 を文字に変換
+        OR      A
+        JR      Z,CellEmpty     ; 0 → 空き
+
+        CP      1
+        JR      Z,CellBlack     ; 1 → 黒
+
+        ; ここに来たら 2 → 白
+CellWhite:
+        LD      A,'O'
+        JR      PrintCell
+
+CellBlack:
+        LD      A,'X'
+        JR      PrintCell
+
+CellEmpty:
+        LD      A,'.'
+
+PrintCell:
+        CALL    PutChar
+
+        ; 各マスの後ろにスペース（行末もそのまま入れてOK）
+        LD      A,' '
+        CALL    PutChar
+
+        DEC     C
+        JR      NZ,ColLoop
+
+        ; 行末で改行
+        LD      DE,MSG_NEWLINE
+        CALL    PrintString
+
+        ; 次の行番号へ
+        ; INC     D            ; '1'→'2'→'3'→'4'
+        DJNZ    RowLoop
+
+        POP     HL
+        POP     DE
+        POP     BC
+        POP     AF
+        RET
+
+
+        ; AI の手を BOARD にセットする
+AIset:
+        PUSH AF
+        PUSH BC
+        
+        LD      DE,AImoveMSG    ; メッセージ表示
+        CALL    PrintString
+        LD      DE,AImovePOS    ; AI の手の位置表示
+        CALL    PrintString
+        LD      DE,MSG_NEWLINE
+        CALL    PrintString
+        
+        LD  A, (AImovePOS)
+        SUB 'A'          ; 列文字 → 0～3
+        LD  B, A         ; B = 列インデックス
+        LD  A, (AImovePOS+1)
+        SUB '1'          ; 行文字 → 0～3
+        SLA A
+        SLA A            ; A = 行インデックス * 4
+        ADD A, B        ; A = 行インデックス * 4 + 列インデックス
+        LD  C, A        ; C = BOARD のオフセット
+        LD  B, 0
+        LD  HL, BOARD
+        ADD HL, BC      ; HL = BOARD + オフセット
+        LD  A, BLACK    ; AI は黒石(X)
+        LD  (HL), A     ; BOARD にセット
+        POP BC
+        POP AF
+        RET
+
+PlayerMove:
+        ; プロンプト（任意）
+        LD  A,'>'
+        CALL PutChar
+        LD  A,' '
+        CALL PutChar
+
+        ; 1行受信（HL=RXBUF, 戻りA=受信長）
+        LD  HL,RXBUF
+        CALL GETLINE
+
+
+        RET
+
+        ; ==== A の文字を送信 ====
+PutChar:
+        PUSH AF
+WaitTx:
+        IN   A,(SIOA_CTL)
+        BIT  2,A
+        JR   Z,WaitTx
+        POP  AF
+        OUT  (SIOA_DAT),A
+        RET
+
+; ==== 0終端文字列を表示 ====
+PrintString:
+        PUSH AF
+        PUSH DE
+PS_Loop:
+        LD   A,(DE)
+        OR   A
+        JR   Z,PS_Done
+        CALL PutChar
+        INC  DE
+        JR   PS_Loop
+PS_Done:
+        POP  DE
+        POP  AF
+        RET
+
+; -----------------------------
+; GETLINE
+; HL: バッファ先頭
+; 受信文字を保存し、CR/LFで確定。最後に 0 終端を付ける
+; 戻り: A = 受信長（0..BUF_MAX-1）
+; -----------------------------
+GETLINE:
+        LD  B,0             ; B=length
+
+GL_LOOP:
+        CALL GetChar        ; A=1文字
+
+        CP  CR
+        JR  Z,GL_DONE
+        CP  LF
+        JR  Z,GL_DONE
+
+        ; バックスペース対応（任意）
+        CP  BS
+        JR  Z,GL_BS
+        CP  DEL
+        JR  Z,GL_BS
+
+; ---- 通常文字（CR/LF, BS/DEL以外） ----
+
+        LD  E,A             ; 受信文字を退避
+
+        ; すでに20文字なら保存しないでビープ
+        LD  A,B
+        CP  LINE_MAX
+        JR  C,GL_STORE      ; B < 20 なら保存OK
+
+        ; 21文字目以降：捨ててビープ（表示は増やさない）
+        LD  A,BEL
+        CALL PutChar
+        JR  GL_LOOP
+
+
+;        LD  A,B              ; 長さチェック
+;        CP  BUF_MAX-1
+;        JR  NC,GL_LOOP
+
+GL_STORE:
+        LD  A,E
+        LD  (HL),A
+        INC HL
+        INC B
+        CALL PutChar        ; 入力中エコー
+        JR  GL_LOOP
+
+GL_BS:
+        LD  A,B
+        OR  A
+        JR  Z,GL_LOOP       ; 0文字なら何もしない
+        DEC HL
+        DEC B
+
+        ; 画面上も1文字消す（BS, space, BS）
+        LD  A,BS
+        CALL PutChar
+        LD  A,' '
+        CALL PutChar
+        LD  A,BS
+        CALL PutChar
+
+        JR  GL_LOOP
+
+GL_DONE:
+        XOR A
+        LD  (HL),A          ; 0終端
+        LD  A,B             ; length
+        RET
+
+; --- 受信（あなたのをほぼそのまま） ---
+GetChar:
+WRX:    XOR  A
+        OUT  (SIOA_CTL),A    ; RR0選択
+        IN   A,(SIOA_CTL)
+        BIT  0,A
+        JR   Z,WRX
+        IN   A,(SIOA_DAT)
+        RET
+
+
+; 0終端文字列の送信（HL=文字列）
+PUTS0:
+PS0:    LD  A,(HL)
+        OR  A
+        RET Z
+        CALL PutChar
+        INC HL
+        JR  PS0
+
+NEWLINE:
+        LD  A,CR
+        CALL PutChar
+        LD  A,LF
+        CALL PutChar
+        RET
+
+; ==== メッセージ ====
+MSG_ECHO:
+        DEFM 13,10,"SIO RX HEX TEST",13,10,0
+        DEFM 0
+
+MSG_RX:
+        DEFM "Rx=",0
+
+; -----------------------------
+WAIT_1:
+        LD      B, 155D
+W1_1:   LD      C, 21D
+W2_1:   DEC     C
+        JP      NZ, W2_1
+        DEC     B
+        JP      NZ, W1_1
+        RET
+
+
+        END START
