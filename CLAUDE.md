@@ -41,6 +41,47 @@ OppBestScore_d2 の opp_best:
   相手は AI 最善スコアが最小になる手を選ぶ (minimax)
 ```
 
+## ROM ブート化計画（オセロ完成後）
+
+28C256（32KB EEPROM）でモニタ ROM と差し替え、オセロ専用機として起動する予定。
+
+### 構造変更方針
+
+```asm
+        ORG  0000H      ; ROM領域: コード・文字列・テーブル
+        LD   SP, 0FFF0H
+        CALL InitSIOA   ; ★追加必須
+        ; ... PIOA/PIOB 初期化（既存）
+        ; ... コード本体
+
+        ORG  8000H      ; RAM領域: 変数のみ
+BOARD:      DEFS 64
+BOARD_SAVE1: DEFS 64
+; ...
+```
+
+### SIOA 初期化コード（モニタ 0196H から解析）
+
+```asm
+InitSIOA:
+    LD   HL, SIOA_INIT_TBL
+    LD   B,  9
+    LD   C,  19H        ; SIOA_CTL
+    OTIR
+    LD   A,  17H
+    OUT  (13H), A       ; ボーレートクロック (port 13H)
+    LD   A,  04H
+    OUT  (13H), A       ; 時定数 → 9600bps
+    RET
+
+SIOA_INIT_TBL:
+    DEFB 18H, 04H, 44H, 03H, 0C1H, 05H, 6AH, 01H, 00H
+```
+
+HEX の 0000H-7FFFH 範囲のみ 28C256 に書き込む。
+
+---
+
 ## 既知の注意事項
 
 - `ApplyMove` は B,C を破壊 → **PUSH BC は ApplyMove より前**

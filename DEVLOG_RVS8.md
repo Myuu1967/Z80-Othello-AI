@@ -699,6 +699,72 @@ depth-2 minimax を実装。`OppBestScore` の代替として `AIset` から呼�
 
 ---
 
+## AKI-80 モニタ ROM 解析 (2026-04-14)
+
+28C256 EEPROM 入手を機に、オセロ完成後に ROM ブート化することを計画。
+モニタ ROM (`AKI-80MONI_ROM.HEX`) を Intel HEX デコードして大枠を解析した。
+
+### ROM マップ概要
+
+| アドレス | 内容 |
+|---|---|
+| 0000H | リセットベクタ: `JP 0080H` |
+| 0030H | RST30H: `JP 02F4H`（デバッガ BP） |
+| 0066H | NMI ベクタ: `JP 013AH` |
+| 0080H | コールドスタート（PIOA/PIOB 初期化 → SP=FCE0H → JP 0D00H） |
+| 0100H | ウォームスタート（SIOA 初期化含む） |
+| **0196H** | **InitSIOA ルーティン**（OTIR + CTC baud rate 設定） |
+| **01A8H** | **SIOA 初期化 9バイトテーブル** |
+| 01B0H-0CFFh | モニタ本体（コマンドパーサ・メモリ操作） |
+| 0D00H-18FFh | メインループ・拡張コマンド・I/O処理 |
+| 1CC0H-1DDEh | 文字列定数・エラーメッセージ |
+| 1D60H- | 起動メッセージ "Start Z80 remote basic Ver.1.0 made by System Load...since 1992." |
+| 1DE0H-7FFFh | FF（未使用） |
+
+### SIOA 初期化コード（0196H）
+
+ROM ブート化に必要な最重要情報。モニタの 0196H をそのまま再現すれば動く。
+
+```asm
+InitSIOA:
+    LD   HL, SIOA_INIT_TBL
+    LD   B,  9
+    LD   C,  19H            ; SIOA_CTL
+    OTIR                    ; 9バイトを一気に送信
+    LD   A,  17H
+    OUT  (13H), A           ; ボーレートクロック設定（port 13H）
+    LD   A,  04H
+    OUT  (13H), A           ; 時定数 → 9600bps
+    RET
+
+SIOA_INIT_TBL:
+    DEFB 18H    ; WR0: チャンネルリセット
+    DEFB 04H    ; WR0: WR4 選択
+    DEFB 44H    ; WR4: x16クロック, 1ストップ, パリティなし
+    DEFB 03H    ; WR0: WR3 選択
+    DEFB 0C1H   ; WR3: 受信有効, 8bit
+    DEFB 05H    ; WR0: WR5 選択
+    DEFB 6AH    ; WR5: 送信有効, 8bit, RTS
+    DEFB 01H    ; WR0: WR1 選択
+    DEFB 00H    ; WR1: 割り込みなし
+```
+
+### ROM ブート化の方針
+
+1. `ORG 0000H`（コード・読み取り専用データ）
+2. `ORG 8000H`（変数・DEFS のみ）
+3. 先頭に `InitSIOA` を追加（上記コード）
+4. SP・PIOA・PIOB 初期化は既存コードで済んでいる
+5. HEX の 0000H-7FFFH 範囲を 28C256 に書き込む
+
+### 備考
+
+- モニタの SP = 0FCE0H、オセロ現行は 0FFF0H → どちらも問題なし
+- port 13H はモニタでも baud rate 設定に使用している
+- 実際のコードは 0x0000〜0x1DE0 程度、32KB EEPROM に余裕で収まる
+
+---
+
 ## 候補機能 (未着手)
 
 | 機能 | 概要 | 備考 |
