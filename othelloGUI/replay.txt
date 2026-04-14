@@ -1,0 +1,43 @@
+  A B C D E F G H
+1 . . . . . . . .
+2 . . . . . . . .
+3 . . . . . . . .
+4 . . . O X . . .
+5 . . . X O . . .
+6 . . . . . . . .
+7 . . . . . . . .
+8 . . . . . . . .
+AI decides who goes first...
+You go first. You are BLACK (X).
+SW:Up/Dn/Lt/Rt=0-3 Ent=4
+Move: C4
+
+  A B C D E F G H
+1 . . . . . . . .
+2 . . . . . . . .
+3 . . . . . . . .
+4 . . X X X . . .
+5 . . . X O . . .
+6 . . . . . . . .
+7 . . . . . . . .
+8 . . . . . . . .
+X:04 O:01
+AI moves to C3
+
+  A B C D E F G H
+1 O X X X X X X O
+2 O O O O O O O O
+3 O X O O X O O O
+4 O X X O O O O O
+5 O O O X O O O O
+6 O X X O O O X O
+7 O X X O O X O O
+8 O O O O O O O O
+X:17 O:47
+
+GAME OVER
+BLACK(X) wins
+
+r:Retry or q:Quit ?
+
+Choose: SW0=1st(X) SW2=2nd(O)
