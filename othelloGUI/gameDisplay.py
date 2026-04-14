@@ -212,6 +212,15 @@ def process_line(line):
         human_text = ""
         draw_status()
 
+    elif line == 'AI PASS':
+        move_text  = "AI PASS"
+        human_text = ""
+        draw_status()
+
+    elif line == 'YOU PASS':
+        human_text = "YOU PASS"
+        draw_status()
+
     elif line == 'GAME OVER':
         move_text  = "GAME OVER"
         human_text = ""
