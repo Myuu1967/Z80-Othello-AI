@@ -4,6 +4,8 @@
 `F:\ClaudeCode\Z80-Othello\asm\` 以下を絶対パスで参照・編集する
 （旧パス `F:\oke\Z80\ASM\オセロ\` は参照しない）
 
+**作業対象は `F:\ClaudeCode\Z80-Othello\asm\RVS8_MM2_AB.ASM`**
+
 ## ハードウェア仕様
 
 | 項目 | 値 |
@@ -24,16 +26,22 @@ RVS8_GREEDY.ASM
             └─ RVS8_MINIMAX1_16.ASM
                  └─ RVS8_MM1_MOB.ASM
                       └─ RVS8_PIOSW.ASM  ← 実機確認済み
-                           └─ RVS8_MM2_AB.ASM  ← 現行最新 (depth-2実装済み)
+                           └─ RVS8_MM2_AB.ASM  ← 現行最新
 ```
 
-**作業対象は `F:\oke\Z80\ASM\オセロ\RVS8_MM2_AB.ASM`**
+## 実装済み機能 (RVS8_MM2_AB.ASM)
+
+- Minimax depth-2 + α-β 枝刈り（OppBestScore_d2、α-cutoff実装済み）
+- 先後手選択: SW0=先手(黒), SW2=後手(白)、SIOA '1'/'2' でも選択可
+- SaveBoard/RestoreBoard: HL パラメータ渡し、BOARD_SAVE1/SAVE2 の2スロット
+- PIOB スイッチ入力（SW0-SW4, Mode3）
+- PIOA D7 → Pico GPIO15 AI処理時間計測
 
 ## 評価式 (depth-2)
 
 ```
 AIset の mm_score:
-  mm_score = POS_WEIGHT[ai_pos]        (5〜120)
+  mm_score = POS_WEIGHT[ai_pos]        (1〜120)
            + (255 - opp_best)          (相手抑制)
            + (ai_mob - opp_mob + 64)   (モビリティ差)
 
@@ -41,6 +49,48 @@ OppBestScore_d2 の opp_best:
   opp_best = 255 - min_j( max_k(POS_WEIGHT[k] + flips[k]) )
   相手は AI 最善スコアが最小になる手を選ぶ (minimax)
 ```
+
+## POS_WEIGHT テーブル（改訂版）
+
+```
+;       A    B    C    D    E    F    G    H
+DEFB  120,   5,  30,  25,  25,  30,   5, 120  ; 1
+DEFB    5,   1,  15,  15,  15,  15,   1,   5  ; 2
+DEFB   30,  15,  20,  20,  20,  20,  15,  30  ; 3
+DEFB   25,  15,  20,  18,  18,  20,  15,  25  ; 4
+DEFB   25,  15,  20,  18,  18,  20,  15,  25  ; 5
+DEFB   30,  15,  20,  20,  20,  20,  15,  30  ; 6
+DEFB    5,   1,  15,  15,  15,  15,   1,   5  ; 7
+DEFB  120,   5,  30,  25,  25,  30,   5, 120  ; 8
+
+角=120, Xマス=1(ほぼ禁止), Cマス=5, 辺中央=25-30
+max score = 120 + 64 flips = 184 < 256 (byte-safe)
+```
+
+## AI処理時間 実測値
+
+| 版 | 最大処理時間 |
+|----|------------|
+| depth-1 (RVS8_PIOSW) | ≈ 700 ms |
+| depth-2 α-β なし | ≈ 6 秒 |
+| depth-2 α-β あり | **≈ 2 秒以下** |
+
+## Pico 側 (gameDisplay.py) 実装済み機能
+
+- 盤面描画 + UART受信 + ノンブロッキング処理時間計測
+- 先後手選択画面: `Choose:` 受信で [シアン●]:1st(X) [赤●]:2nd(O) 表示
+- AI手・人手・スコア・処理時間の5行ステータス表示
+- GAME OVER + 勝者行（石アイコン付き）
+- AI PASS / YOU PASS 表示
+- リトライ表示（5行目）・新ゲーム自動リセット
+- ログ再生: `replay_log('/replay.txt')`
+
+## 次のTODO（優先順）
+
+1. 終盤完全読み（残り≤10〜12手で石数差最大化）
+2. ムーブオーダリング → depth-3 検討
+3. PASS連続2回・DRAW の動作テスト
+4. ROM ブート化（オセロ完成後）
 
 ## ROM ブート化計画（オセロ完成後）
 
