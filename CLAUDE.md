@@ -4,7 +4,8 @@
 `F:\ClaudeCode\Z80-Othello\asm\` 以下を絶対パスで参照・編集する
 （旧パス `F:\oke\Z80\ASM\オセロ\` は参照しない）
 
-**作業対象は `F:\ClaudeCode\Z80-Othello\asm\RVS8_MM2_AB.ASM`**
+**現在の作業対象: `F:\ClaudeCode\Z80-Othello\asm\MM2_AB_EG.ASM`（アセンブル通過・実機確認中）**
+ベースファイル: `F:\ClaudeCode\Z80-Othello\asm\RVS8_MM2_AB.ASM`
 
 ## ハードウェア仕様
 
@@ -26,14 +27,17 @@ RVS8_GREEDY.ASM
             └─ RVS8_MINIMAX1_16.ASM
                  └─ RVS8_MM1_MOB.ASM
                       └─ RVS8_PIOSW.ASM  ← 実機確認済み
-                           └─ RVS8_MM2_AB.ASM  ← 現行最新
+                           └─ RVS8_MM2_AB.ASM  ← 実機確認済み
+                                └─ MM2_AB_EG.ASM  ← 現行作業中（アセンブル通過）
 ```
 
-## 実装済み機能 (RVS8_MM2_AB.ASM)
+## 実装済み機能 (MM2_AB_EG.ASM) ← 現行最新
 
 - Minimax depth-2 + α-β 枝刈り（OppBestScore_d2、α-cutoff実装済み）
+- **終盤完全読み**: 空きマス ≤ ENDGAME_THRESHOLD(=2) で AIset_EG (negamax + α-β) に切り替え
+- `SF_ALPHA_TBL[10]`: depth 別 alpha テーブルで negamax α-β 実装
 - 先後手選択: SW0=先手(黒), SW2=後手(白)、SIOA '1'/'2' でも選択可
-- SaveBoard/RestoreBoard: HL パラメータ渡し、BOARD_SAVE1/SAVE2 の2スロット
+- SaveBoard/RestoreBoard: HL パラメータ渡し、BOARD_SAVE1/SAVE2/BOARD_EG_SAVES
 - PIOB スイッチ入力（SW0-SW4, Mode3）
 - PIOA D7 → Pico GPIO15 AI処理時間計測
 
@@ -85,12 +89,21 @@ max score = 120 + 64 flips = 184 < 256 (byte-safe)
 - リトライ表示（5行目）・新ゲーム自動リセット
 - ログ再生: `replay_log('/replay.txt')`
 
+## 既知の注意事項（MM2_AB_EG 追加分）
+
+- `EG_DEPTH` は `AIset_EG` から呼ぶ際は **1** で初期化（0 は BOARD_SAVE1 衝突）
+- α-β の -INF 初期値は **81H**（`NEG(80H) = 80H` オーバーフローの罠を避ける）
+- `SF_ALPHA_TBL[0]` には `EG_BESTSCORE` を設定（固定 80H でなく AI ベストスコア）
+- `LD r,(nn)` / `LD (nn),r` は A のみ有効（B,C 等は A 経由で代替）
+- `IXL`/`IXH` はアセンブラ非対応 → D/E レジスタで代替
+
 ## 次のTODO（優先順）
 
-1. 終盤完全読み（残り≤10〜12手で石数差最大化）
-2. ムーブオーダリング → depth-3 検討
-3. PASS連続2回・DRAW の動作テスト
-4. ROM ブート化（オセロ完成後）
+1. **MM2_AB_EG.ASM 実機確認・処理時間計測**（α-β 修正済み、実機ロード待ち）
+2. 閾値調整（ENDGAME_THRESHOLD 現在=2、実機確認後に 4〜8 への拡張を検討）
+3. ムーブオーダリング → depth-3 検討
+4. PASS連続2回・DRAW の動作テスト
+5. ROM ブート化（オセロ完成後）
 
 ## ROM ブート化計画（オセロ完成後）
 

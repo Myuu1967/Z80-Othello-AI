@@ -883,11 +883,243 @@ Z80が送る "AI PASS\r\n" / "YOU PASS\r\n" のハンドラを追加。
 
 | 機能 | 概要 | 備考 |
 |---|---|---|
-| α-β 枝刈り | β-CUTOFFポイント明示済み | OBS_END ラベルあり、depth-2高速化に必須 |
 | 評価関数の重み付け | w1×位置 + w2×相手抑制 + w3×モビリティ | ソフト乗算ルーチンが必要 |
 | POS_WEIGHTテーブル蒸留 | PC側DLで学習した価値をZ80用64バイトテーブルに圧縮 | 現行テーブルは人手設計 |
 | 序盤定石 | 序盤N手を定石テーブルから選択、minimax省略 | 処理時間ゼロ化・強さ向上 |
 | 終盤重み変更 | 残り石数に応じて評価式の重みを切り替え | 序盤=モビリティ重視、終盤=位置重視など |
-| 終盤完全読み | 残り≤12手で完全 minimax | 終盤は合法手が絞られ高速 |
 | 安定石評価 | 角から連続する石を加点 | 算出コスト高 |
 | 盤面重み合計差 | Σweight(AI石) - Σweight(相手石) | 既存の16bit演算で対応可 |
+
+---
+
+## MM2_AB_EG.ASM 設計・実装計画 (2026-04-15)
+
+RVS8_MM2_AB.ASM を全読みし、終盤完全読み実装の設計を完了した。
+新ファイル名を `MM2_AB_EG.ASM` に決定（RVS8_ プレフィックス廃止）。
+
+### ファイル名の意味
+`MM2` = MiniMax depth-2 / `AB` = Alpha-Beta / `EG` = EndGame 完全読み
+
+### ファイル系譜更新
+```
+RVS8_MM2_AB.ASM  ← 現行最新（実機確認済み）
+  └─ MM2_AB_EG.ASM  ← 次の作業（設計完了・実装前）
+```
+
+### 実装方針
+
+空きマス数が `ENDGAME_THRESHOLD`（初期値=8）以下になったとき、
+ヒューリスティック評価（depth-2 α-β）から終盤完全読みに切り替える。
+
+終盤完全読み: negamax で全読み → AI石数 - 相手石数で評価（符号付き -64〜+64）
+
+### 追加要素
+
+| 追加要素 | 内容 |
+|---|---|
+| `CountEmpty` | 空きマス数 → A を返す |
+| `ENDGAME_THRESHOLD EQU 8` | 切り替え閾値（実測後に 10 への拡張を検討） |
+| `BOARD_EG_SAVES` | 完全読み用盤面スロット（8枚×64B = 512B） |
+| `EG_GetSaveAddr` | EG_DEPTH → バッファアドレス計算 |
+| `SearchFull` | negamax 完全読み再帰（α-β は処理時間計測後に追加） |
+| `AIset_EG` | 終盤外ループ（SearchFull でスコア計算） |
+| `SF_SIDE_TMP` | SearchFull 内 side 一時保存変数 |
+| `DT_DoAI` 変更 | CountEmpty → 閾値判定 → AIset / AIset_EG 分岐 |
+
+### 実装 7 ステップ
+
+1. ファイル作成・土台準備（定数・変数・BOARD_EG_SAVES 追加）
+2. `CountEmpty` + `EG_GetSaveAddr`（ユーティリティ関数・実機表示確認）
+3. `SearchFull`（negamax、α-β なし版）
+4. `AIset_EG`（外ループ）
+5. `DT_DoAI` 切り替え + 初回実機確認・処理時間計測  ← 最初のゴール
+6. `SearchFull` に α-β 追加（処理時間次第）
+7. 閾値調整・DEVLOG 更新・git コミット
+
+### 実装プロンプト保存先
+
+`F:\ClaudeCode\Z80-Othello\MM2_AB_EG_実装プロンプト.txt`
+
+---
+
+## MM2_AB_EG.ASM 実装・バグ修正 (2026-04-16)
+
+### 実装完了
+
+`MM2_AB_EG.ASM` を完成させ、アセンブル通過を確認。
+
+追加・変更内容:
+- `CountEmpty` / `EG_GetSaveAddr` / `SearchFull` (negamax) / `AIset_EG` / `BOARD_EG_SAVES` / `SF_ALPHA_TBL`
+- `DT_DoAI` に `CountEmpty → CP 9 → AIset_EG / AIset 分岐` を追加
+- `SearchFull` に α-β 枝刈りを追加（`SF_ALPHA_TBL[10]` を depth別 alpha テーブルとして使用）
+
+### バグ修正一覧
+
+#### 1. SearchFull 終端評価の正負逆転
+
+`AiSide` で石差を計算していたため、偶数深さでスコアの正負が逆転。  
+negamax の原則に従い `SF_SIDE_TMP`（現在の手番プレイヤー）を使うよう修正。
+
+#### 2. BOARD_SAVE1 衝突
+
+`AIset_EG` が `BOARD_SAVE1` を使用しているにも関わらず、`EG_DEPTH=0` のまま `SearchFull` を呼んでいたため、`SearchFull(depth=0)` も `BOARD_SAVE1` を上書きしていた。  
+→ `AIset_EG` 内の `EG_DEPTH` 初期値を `0` → `1` に変更（`SearchFull` は depth=1 から BOARD_SAVE2 を使用）
+
+#### 3. NEG(80H) オーバーフロー → α-β 不正動作
+
+`SF_ALPHA_TBL[0]` の初期値に `80H`（-128）を使うと `NEG(80H) = 80H`（Z80 NEG 命令の例外: -128 のみオーバーフロー）となり、beta が +INF のつもりが -INF になってしまう。  
+**現象**: AI が負けている局面（相手スコアが正）で枝刈りが全く効かず 5 分超のハング。  
+
+修正:
+- 全ての `-INF` 初期値を `80H` → `81H` (-127) に変更 → `NEG(81H) = 7FH = +127` ✓
+- `AIset_EG` 外ループで `SF_ALPHA_TBL[0] = EG_BESTSCORE`（固定 80H でなく現在の AI ベストスコア）に設定  
+  → depth=1 の beta = -EG_BESTSCORE として正しい α-β が機能する
+
+#### 4. Z80 アセンブラ非対応命令の修正
+
+クラシック Z80 アセンブラは以下の命令をサポートしない:
+
+| 問題の命令 | 修正後 |
+|---|---|
+| `LD IXL,A` / `SUB IXL` | D レジスタ経由 `LD D,A; SUB D` |
+| `LD B,(SF_SIDE_TMP)` | `LD A,(SF_SIDE_TMP); LD B,A` |
+| `LD (EG_BESTROW),B` | `LD A,B; LD (EG_BESTROW),A` |
+| `LD (EG_BESTCOL),C` | `LD A,C; LD (EG_BESTCOL),A` |
+| `SUB (SF_SIDE_TMP)` | `LD B,A; LD A,3; SUB B` |
+
+**Z80 の制約**: `LD r,(nn)` / `LD (nn),r` は A レジスタのみ。`IXL`/`IXH` は多くのアセンブラで非対応。
+
+### α-β 設計
+
+```
+SF_ALPHA_TBL[D] = depth D の現在ベストスコア (alpha)
+beta[D]         = -SF_ALPHA_TBL[D-1]  (親の alpha を反転)
+
+cutoff 条件: alpha[D] - beta[D] >= 0
+  つまり: alpha[D] + SF_ALPHA_TBL[D-1] >= 0
+
+AIset_EG 外ループとの接続:
+  AI が良い手を見つけるたびに SF_ALPHA_TBL[0] = EG_BESTSCORE を更新
+  → 次の候補手の SearchFull(depth=1) で beta が絞られ枝刈りが増加
+```
+
+### 処理時間（実機計測待ち）
+
+空き 8 マスでハングが発生していたため、現在の α-β 修正後に再計測予定。
+
+---
+
+## MM2_AB_EG.ASM バグ修正・閾値調整 (2026-04-17)
+
+### 閾値調整
+
+`ENDGAME_THRESHOLD` を段階的に削減。
+
+| 値 | 結果 |
+|----|------|
+| 8 | ハング（数分以上） |
+| 4 | 約5分かかる（α-β バグにより実質全探索） |
+| **2** | **現行値。2! = 2ノード、即時** |
+
+### バグ① AIset_EG の EG_BESTSCORE 上書き問題
+
+**症状:** 閾値4で約5分かかる（α-β が実質無効）。
+
+**原因:** `AIset_EG` 外ループが `SearchFull` 呼び出し前後で `EG_BESTSCORE` を退避・復元していなかった。
+`SearchFull` は内部の `SF_HasMove` 先頭で `EG_BESTSCORE = 81H` にリセットし、その後更新する。
+戻ってきたとき `EG_BESTSCORE` は「相手 depth=1 での最善値」になっており、AIset_EG 自身の累積ベストではなくなっていた。
+
+```
+AIset_EG: EG_BESTSCORE = +5 (1手目のAI最善)
+  → SearchFull 呼び出し
+    内部: EG_BESTSCORE = 81H → 処理 → 相手最善 -3 に更新
+  → 戻る
+AIset_EG: EG_BESTSCORE を読む → -3 (間違い!)
+  SF_ALPHA_TBL[0] = -3 → α-β の閾値が狂う → 枝刈り無効化
+```
+
+**影響:** `SF_ALPHA_TBL[0]`（α-β の alpha 値）も誤った値で設定され、枝刈りがほぼ効かなくなる。
+
+**修正:** `SearchFull` 呼び出しの直前に `PUSH AF`、RestoreBoard 後 `POP AF / LD (EG_BESTSCORE),A` を追加。
+
+```asm
+        LD   A,(EG_BESTSCORE)
+        LD   (SF_ALPHA_TBL),A
+        PUSH AF                 ; ← 追加: EG_BESTSCORE を退避
+        ...
+        CALL SearchFull
+        NEG
+        LD   E,A
+
+        CALL RestoreBoard
+        POP  AF                 ; ← 追加: EG_BESTSCORE を復元
+        LD   (EG_BESTSCORE),A
+        POP  BC
+```
+
+**補足:** `SearchFull` 内部の再帰呼び出し（`SF_HasMove` ループ）では既に同パターンの PUSH/POP が実装されており正常。抜けていたのは `AIset_EG` の外ループのみ。
+
+### バグ② SF_HasMove の EG_BESTSCORE 初期値 80H
+
+**原因:** `SF_HasMove` が `EG_BESTSCORE = 80H` で初期化していた。
+子スコアが正値（+1〜+64）の場合、符号付き比較 `E - 80H` がオーバーフローして負に見え、更新がスキップされる。
+結果として EG_BESTSCORE が 80H のまま SearchFull が返り、呼び出し元で `NEG(80H) = 80H`（Z80の-128オーバーフロー）が発生。
+
+**修正:** `80H → 81H`（AIset_EG・SF_ALPHA_TBL と同一方針に統一）
+
+```asm
+; 修正前
+LD   A,80H
+LD   (EG_BESTSCORE),A   ; ベスト = -128
+
+; 修正後
+LD   A,81H
+LD   (EG_BESTSCORE),A   ; ベスト = -127 (80H は NEG でオーバーフロー → 使わない)
+```
+
+### バッファ設計の確認
+
+`EG_GetSaveAddr` による depth 別バッファ割り当ての動作を確認。
+深い再帰が浅いバッファを上書きすることはない（各 depth が専用スロットを使用）。
+
+| depth | バッファ |
+|-------|---------|
+| 0 | BOARD_SAVE1 (AIset_EG が直接使用) |
+| 1 | BOARD_SAVE2 |
+| 2 | BOARD_EG_SAVES[0] |
+| 3 | BOARD_EG_SAVES[1] |
+| 4 | BOARD_EG_SAVES[2] |
+
+閾値=2 なら depth 0〜3 で収まり、8スロット確保済みの範囲内で十分余裕がある。
+
+### バグ③ AIset_EG / SearchFull 符号付き比較オーバーフロー
+
+**症状:** 終盤でAIが手を指さず YOU PASS が無限ループ。
+
+**原因:** `EG_BESTSCORE` の初期値 `81H`（-127 sentinel）と実スコアの比較がオーバーフロー。
+
+- `SearchFull` が即終局（terminal）を経由して返った場合、`SF_HasMove` を通らないため `EG_BESTSCORE` は `81H` のまま
+- 呼び出し元で `E - 81H` を符号付き減算すると、E が正値（例: +45 = 2DH）のとき `2DH - 81H = ACH = -84` となり JP M が発火 → 「新手 < ベスト」と誤判定してスキップ
+- 結果: 全候補手がスキップされ `EG_BESTROW = FFH` のまま → AIset_EG は手を指さず無言でリターン → DoTurn は PASS 処理をしないまま次ターンへ → YOU PASS ループ
+
+**修正内容:**
+
+`SearchFull` の `SF_HasMove`:
+- 比較前に `CP 81H; JR Z,SF_DO_UPDATE` を追加
+- 初回（sentinel 値）は無条件採用、2回目以降のみ比較
+
+`AIset_EG` の外ループ:
+- `LD A,(EG_BESTROW); CP 0FFH; JR Z,AEGM_UPDATE` を追加
+- `EG_BESTROW=FFH`（未発見）なら無条件採用、以降は符号付き比較
+
+**根本的な原因:**  
+有効スコア範囲 -64..+64（128通り）に対し、8bit符号付き減算は最大127しか扱えない。  
+sentinel `81H`（-127）と正値スコア（例: +64）の差 = +191 → 8bitオーバーフロー → 符号が逆転。  
+→「初回は比較しない」パターンで回避。2回目以降は実スコア同士の比較なので問題なし（差は最大±128だが実用範囲内）。
+
+### 次のTODO
+
+1. **MM2_AB_EG.ASM 実機確認**（バグ修正3点・閾値=2で動作確認）
+2. 動作確認後、閾値を 3〜4 に戻せるか処理時間を計測して判断
+3. PASS 連続2回・DRAW の動作テスト
+4. ムーブオーダリング → depth-3 検討
