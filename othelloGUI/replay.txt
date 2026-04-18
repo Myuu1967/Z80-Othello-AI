@@ -41,3 +41,47 @@ BLACK(X) wins
 r:Retry or q:Quit ?
 
 Choose: SW0=1st(X) SW2=2nd(O)
+
+  A B C D E F G H
+1 O O O O O O O X
+2 O O O O O O X X
+3 O X O X X X O X
+4 O X X O X O X X
+5 O X X X O X X X
+6 O X X X O O X X
+7 O X X X X X X X
+8 . O O O O O O .
+X:31 O:31
+SW:Up/Dn/Lt/Rt=0-3 Ent=4
+Move: H8
+
+  A B C D E F G H
+1 O O O O O O O X
+2 O O O O O O X X
+3 O X O X X X O X
+4 O X X O X O X X
+5 O X X X O X X X
+6 O X X X O O X X
+7 O X X X X X O X
+8 . O O O O O O O
+X:30 O:33
+AI PASS
+
+  A B C D E F G H
+1 O O O O O O O X
+2 O O O O O O X X
+3 O X O X X X O X
+4 O X X O X O X X
+5 O X X X O X X X
+6 O X X X O O X X
+7 O X X X X X O X
+8 . O O O O O O O
+X:30 O:33
+YOU PASS
+
+Game ended by consecutive passes.
+
+GAME OVER
+WHITE(O) wins
+
+r:Retry or q:Quit ?
