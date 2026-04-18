@@ -128,6 +128,25 @@ def get_legal_moves_ordered(board, side):
 def count_mobility(board, side):
     return sum(1 for pos in range(64) if count_flips(board, pos, side) > 0)
 
+def count_stable_stones(board, side):
+    """安定石カウント（簡易版）: コーナーとそこから連続する辺の石。"""
+    stable = set()
+    for col, row in [(0,0), (7,0), (0,7), (7,7)]:
+        if board[row*8+col] != side:
+            continue
+        stable.add(row*8+col)
+        dc = 1 if col == 0 else -1
+        c = col + dc
+        while 0 <= c <= 7 and board[row*8+c] == side:
+            stable.add(row*8+c)
+            c += dc
+        dr = 1 if row == 0 else -1
+        r = row + dr
+        while 0 <= r <= 7 and board[r*8+col] == side:
+            stable.add(r*8+col)
+            r += dr
+    return len(stable)
+
 def count_stones(board):
     return board.count(BLACK), board.count(WHITE)
 
@@ -150,21 +169,40 @@ def print_counts(board):
 # =========================================================
 # AI - Depth 3, negamax with α-β
 #
-# eval_board (leaf): POS_WEIGHT差 + モビリティ差 × MOB_WEIGHT
+# eval_board (leaf): 序盤/中盤/終盤で重みを切り替え + 安定石
 # negamax: 再帰 α-β。PASSは depth を消費しない。
 # ai_choose_move: 最善手を返す。
 # =========================================================
 
-MOB_WEIGHT = 10  # モビリティ1手差あたりの重み（調整可）
+EARLY_GAME = 44  # empty >= 44: 序盤
+MID_GAME   = 12  # empty >= 12: 中盤、else: 終盤
 
 def eval_board(board, side):
-    """Static evaluation from side's perspective (leaf nodes)."""
-    opp = 3 - side
+    """Static evaluation from side's perspective (leaf nodes).
+    序盤: モビリティ重視  中盤: バランス  終盤: 石差重視"""
+    opp   = 3 - side
+    empty = board.count(EMPTY)
+
     my_pos  = sum(POS_WEIGHT[i] for i in range(64) if board[i] == side)
     opp_pos = sum(POS_WEIGHT[i] for i in range(64) if board[i] == opp)
+    pos_diff = my_pos - opp_pos
+
     my_mob  = count_mobility(board, side)
     opp_mob = count_mobility(board, opp)
-    return (my_pos - opp_pos) + (my_mob - opp_mob) * MOB_WEIGHT
+    mob_diff = my_mob - opp_mob
+
+    my_stable  = count_stable_stones(board, side)
+    opp_stable = count_stable_stones(board, opp)
+    stable_diff = my_stable - opp_stable
+
+    if empty >= EARLY_GAME:       # 序盤: モビリティ重視
+        return pos_diff + mob_diff * 12 + stable_diff * 30
+    elif empty >= MID_GAME:       # 中盤: バランス
+        return pos_diff + mob_diff * 8  + stable_diff * 50
+    else:                         # 終盤: 石差重視
+        x, o = count_stones(board)
+        stone_diff = (x - o) if side == BLACK else (o - x)
+        return stone_diff * 100 + stable_diff * 30
 
 def negamax(board, depth, alpha, beta, side):
     """
