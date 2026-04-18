@@ -167,6 +167,104 @@ Z80 SIOA  ──┬──→ PC ターミナル
 - コミットメッセージ形式: `[ファイル名] 変更内容の概要`
 - ビルド成果物（.err .hex .lin .lst .sym）はコミットしない
 
+## 関数リファレンス (MM2_AB_EG.ASM)
+
+### シリアル / IO
+
+| 関数 | 入力 | 出力 | 破壊 |
+|---|---|---|---|
+| `PutChar` | A=文字 | — | なし |
+| `PrintString` | DE=文字列アドレス(0終端) | — | AF,DE |
+| `NEWLINE` | — | — | AF |
+| `GetChar` | — | A=受信文字 | AF |
+| `GETLINE` | HL=バッファ先頭 | A=文字数、バッファに0終端文字列 | AF,B,HL |
+| `StartTimer` | — | PIOA bit7 HIGH | AF |
+| `StopTimer` | — | PIOA bit7 LOW | AF |
+
+### PIOB スイッチ
+
+| 関数 | 入力 | 出力 | 破壊 |
+|---|---|---|---|
+| `InitPIOB` | — | — | AF |
+| `Debounce` | — | ≈15ms待ち | なし |
+| `WaitSwPress` | — | A=bitmask(アクティブLOW反転済み) | AF |
+| `SW_PlayerMove` | — | 着手済(BOARD更新) | AF,BC,DE |
+
+### ゲーム制御
+
+| 関数 | 入力 | 出力 | 破壊 |
+|---|---|---|---|
+| `InitBoard` | — | BOARD初期化・PassStreak=0 | AF,BC,DE,HL |
+| `PrintBoard` | — | 盤面シリアル出力 | なし(全PUSH/POP) |
+| `PrintCounts` | — | "X:nn O:nn" 出力 | AF,BC,DE,HL |
+| `DecideFirstTurn` | — | AiSide/HumSide/TurnSide設定 | AF,DE |
+| `DoTurn` | — | A=0:継続 / 1:パス連続終了 | AF,BC,DE |
+| `ShowWinner` | — | 勝者文字列出力 | AF,BC,DE,HL |
+
+### 座標変換
+
+| 関数 | 入力 | 出力 | 破壊 |
+|---|---|---|---|
+| `RowColToOffset` | B=row(0-7),C=col(0-7) | C=offset(B×8+C) | AF |
+| `OffsetToRowCol` | C=offset | B=row,C=col | AF |
+| `InRange` | B=row,C=col | A=1:有効 / 0:無効 | AF |
+
+### 盤面操作
+
+| 関数 | 入力 | 出力 | 破壊 |
+|---|---|---|---|
+| `SaveBoard` | HL=保存先バッファ | BOARD→(HL) | なし(全PUSH/POP) |
+| `RestoreBoard` | HL=復元元バッファ | (HL)→BOARD | なし(全PUSH/POP) |
+| `IsBoardFull` | — | A=1:満杯 / 0:空きあり | AF,BC,HL |
+| `PlaceAtOffset` | A=side,C=offset | A=1:成功 / 0:失敗(BEL) | AF,HL |
+| `CountStones` | — | B=黒数,C=白数 | AF,D,HL |
+| `CountEmpty` | — | A=空きマス数 | AF,BC,HL |
+
+### 合法手判定 / 着手
+
+| 関数 | 入力 | 出力 | 破壊 |
+|---|---|---|---|
+| `TryDirCount` | WORK_PLAYER/ROW/COL・TD_DR/DC設定済み | A=ひっくり返せる枚数 | AF,BC,DE,HL |
+| `IsLegalMove` | D=side,B=row,C=col | A=1:合法 / 0:不合法 | AF,BC,DE,HL,IX,IY |
+| `FlipDirN` | A=枚数,WORK_*/TD_*設定済み | BOARD更新 | AF,BC,HL |
+| `ApplyMove` | D=side,B=row,C=col | A=1:成功 / 0:失敗 | **AF,BC**,DE,HL,IX,IY |
+| `HasAnyLegalMove` | D=player | A=1:あり / 0:なし | AF,BC,DE,HL,IX,IY |
+| `CountAllFlips` | D=player,B=row,C=col | A=合計ひっくり返し数 | **AF,BC,DE,HL,IX,IY** |
+| `CountMobility` | D=player | A=合法手数,AI_MOB_COUNT更新 | **AF**,BC,DE,HL,IX,IY |
+| `ParseMove` | RXBUF設定済み | C=offset,A=1:成功 / 0:失敗 | AF,BC |
+
+### AI — Minimax depth-2 + α-β
+
+| 関数 | 入力 | 出力 | 破壊 |
+|---|---|---|---|
+| `OppBestScore` | D=opp | A=opp_best(depth-1),OBS_COUNT=手数 | AF,BC,DE,HL |
+| `OppBestScore_d2` | D=opp | A=opp_best(depth-2+α-β),OBS_COUNT | AF,BC,DE,HL |
+| `AIset` | — | 最善手をBOARDに反映・移動先を出力 | AF,BC,DE,HL |
+
+### AI — 終盤完全読み
+
+| 関数 | 入力 | 出力 | 破壊 |
+|---|---|---|---|
+| `EG_GetSaveAddr` | A=EG_DEPTH | HL=バッファアドレス | AF,BC,HL |
+| `SearchFull` | D=side,EG_DEPTH設定,SF_SIDE_TMP=side | A=スコア(符号付き,手番視点) | AF,BC,DE,HL |
+| `AIset_EG` | — | 最善手をBOARDに反映・移動先を出力 | AF,BC,DE,HL |
+
+### 主要変数
+
+| 変数 | 用途 |
+|---|---|
+| `AiSide` / `HumSide` / `TurnSide` | BLACK(1)/WHITE(2) |
+| `PassStreak` | 連続パス数(0-2) |
+| `AI_BEST_ROW/COL/SCORE` | AIset 作業用 |
+| `OBS_BEST/OBS_COUNT/OBS2_MIN_AI` | OppBestScore 作業用 |
+| `EG_DEPTH` | SearchFull 再帰深さ(AIset_EGから呼ぶ時は1で初期化) |
+| `EG_BESTSCORE/BESTROW/BESTCOL` | AIset_EG 作業用 |
+| `SF_SIDE_TMP` | SearchFull 内 side 保持用(AiSideでなくこちらを使う) |
+| `SF_ALPHA_TBL[10]` | depth別 alpha値 |
+| `BOARD_SAVE1` | AIset 外ループ用(depth-1) |
+| `BOARD_SAVE2` | OppBestScore_d2 内ループ用(depth-2) |
+| `BOARD_EG_SAVES` | SearchFull 再帰用(depth 2〜9,各64B) |
+
 ## 詳細履歴
 
 `DEVLOG_RVS8.md`（このディレクトリ内）を参照
