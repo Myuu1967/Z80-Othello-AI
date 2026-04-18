@@ -7,6 +7,41 @@
 **現在の作業対象: `F:\ClaudeCode\Z80-Othello\asm\MM2_AB_EG.ASM`（アセンブル通過・実機確認中）**
 ベースファイル: `F:\ClaudeCode\Z80-Othello\asm\RVS8_MM2_AB.ASM`
 
+## 開発フロー（Python版を正とする）
+
+AIロジックの変更は必ず **Python → 検証 → Z80移植** の順で行う。
+Z80アセンブラで直接デバッグするより Python で先に確認する方がサイクルが速い。
+
+```
+1. python/othello_mm3_ab.py でロジックを変更・検証（A/Bテスト等）
+2. 動作確認できたら asm/MM2_AB_EG.ASM に移植
+3. アセンブル → 実機確認
+```
+
+### Python ↔ Z80 対応表
+
+| Python (mm3_ab.py) | Z80 (MM2_AB_EG.ASM) | 備考 |
+|---|---|---|
+| `ai_choose_move()` | `AIset` / `AIset_EG` | 通常/終盤で切り替え |
+| `negamax()` | `SearchFull` | 終盤完全読み |
+| `eval_board()` | mm_score計算（AIset内） | 序盤/中盤/終盤切り替えは未移植 |
+| `get_legal_moves_ordered()` | `CountAllFlips` ループ | Z80はPOS_WEIGHT順ソートなし |
+| `apply_move()` | `ApplyMove` | Z80はB,C破壊に注意 |
+| `count_flips()` | `CountAllFlips` | — |
+| `count_mobility()` | `CountMobility` | Z80はAF破壊に注意 |
+| `count_stable_stones()` | （未実装） | Phase2評価改善、Z80移植待ち |
+| `POS_WEIGHT_V1` | `POS_WEIGHT` | Z80は正値のみ（byte制約） |
+| `POS_WEIGHT_V2` | 移植不可（負値あり） | Python専用 |
+| `EARLY_GAME` / `MID_GAME` 分岐 | （未実装） | Phase2評価改善、Z80移植待ち |
+
+### Z80移植時の制約
+
+- 評価値は **符号なし8bit (0-255)** が基本（depth-2通常探索）
+- 負値・符号付き演算は終盤スコア（`SearchFull`）のみ使用可
+- POS_WEIGHT_V2（負値テーブル）はZ80に移植できない → V1のまま維持
+- `IXL`/`IXH` 非対応 → D/E レジスタで代替
+- `LD r,(nn)` は A のみ有効
+
 ## ハードウェア仕様
 
 | 項目 | 値 |
