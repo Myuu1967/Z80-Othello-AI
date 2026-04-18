@@ -8,3 +8,7 @@ asm/*.sym
 # Pico / MicroPython
 othelloGUI/__pycache__/
 othelloGUI/*.pyc
+
+# Python prototype
+python/__pycache__/
+python/*.pyc
