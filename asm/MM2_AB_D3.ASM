@@ -1366,6 +1366,110 @@ ID3_END:
 
 
 ; ---------------------------------------------------------
+; AiBestScore_d3  [depth-3: AI視点 ply3ループ]
+;
+;   現在のBOARD(ply2 OPP着手後)でAIが打てる各手について:
+;     1. SaveBoard(BOARD_SAVE3)
+;     2. ApplyMove(AI)
+;     3. ID3_LOOP → OBS3_BEST = OPP leaf最善スコア
+;     4. RestoreBoard(BOARD_SAVE3)
+;     5. ai_score = 255 - OBS3_BEST
+;        D3_AI_BEST = max(D3_AI_BEST, ai_score)
+;
+;   β-cutoff (OppBestScore_d3側):
+;     D3_AI_BEST >= OBS2_MIN_AI (OPP現在最小) → OPPはこのply2手を選ばない
+;     → この判定はOppBestScore_d3の呼び出し後に行う
+;
+; Input:  BOARD = ply2 OPP着手後
+; Output: D3_AI_BEST = AIのply3最善スコア (0 = AI合法手なし)
+; Destroys: AF,BC,DE,HL,IX,IY,ID2_IDX,LD3_IDX,D3_AI_ALPHA,OBS3_BEST
+; ---------------------------------------------------------
+AiBestScore_d3:
+        XOR  A
+        LD   (D3_AI_BEST),A
+
+        XOR  A
+        LD   (ID2_IDX),A
+
+AB_D3_LOOP:
+        ; POS_ORDER[ID2_IDX] からマスoffsetを取得 → B=row, C=col
+        LD   A,(ID2_IDX)
+        CP   64
+        JP   NC,AB_D3_END
+
+        LD   HL,POS_ORDER
+        LD   C,A
+        LD   B,0
+        ADD  HL,BC
+        LD   A,(HL)          ; A = offset (0..63)
+        LD   E,A
+        AND  07H
+        LD   C,A             ; col = offset & 7
+        LD   A,E
+        RRCA
+        RRCA
+        RRCA
+        AND  07H
+        LD   B,A             ; row = offset >> 3
+
+        LD   A,(AiSide)
+        LD   D,A
+        PUSH BC
+        PUSH DE
+        CALL CountAllFlips
+        POP  DE
+        POP  BC
+
+        OR   A
+        JP   Z,AB_D3_NEXT    ; AIが打てない手はスキップ
+
+        PUSH BC
+
+        ; ply3: BOARD_SAVE3 に保存してAI着手を適用
+        LD   HL,BOARD_SAVE3
+        CALL SaveBoard
+
+        LD   A,(AiSide)
+        LD   D,A
+        CALL ApplyMove
+
+        ; D3_AI_ALPHA = 255 - D3_AI_BEST (ID3_LOOP用cutoff閾値)
+        LD   A,0FFH
+        LD   HL,D3_AI_BEST
+        SUB  (HL)
+        LD   (D3_AI_ALPHA),A
+
+        CALL ID3_LOOP        ; OBS3_BEST = OPPのleaf最善スコア
+
+        LD   HL,BOARD_SAVE3
+        CALL RestoreBoard
+
+        ; ai_score = 255 - OBS3_BEST
+        LD   A,0FFH
+        LD   HL,OBS3_BEST
+        SUB  (HL)            ; A = 255 - OBS3_BEST
+
+        ; D3_AI_BEST = max(D3_AI_BEST, ai_score)
+        LD   HL,D3_AI_BEST
+        CP   (HL)
+        JR   C,AB_D3_POP
+        JR   Z,AB_D3_POP
+        LD   (HL),A
+
+AB_D3_POP:
+        POP  BC
+
+AB_D3_NEXT:
+        LD   A,(ID2_IDX)
+        INC  A
+        LD   (ID2_IDX),A
+        JP   AB_D3_LOOP
+
+AB_D3_END:
+        RET
+
+
+; ---------------------------------------------------------
 ; CountMobility
 ; Input:  D = player side
 ; Output: A = legal move count / AI_MOB_COUNT にも格納
