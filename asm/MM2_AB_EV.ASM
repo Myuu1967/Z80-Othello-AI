@@ -202,6 +202,14 @@ POS_ORDER:
         ; weight=1: Xマス
         DEFB  9, 14, 49, 54
 
+; [WEIGHT] 安定石コーナーテーブル (3バイト x 4コーナー)
+; 各エントリ: offset, dc(列方向 +1/FFH), dr(行方向 +1/FFH)
+CS_CORNER_TBL:
+        DEFB  0, 01H, 01H   ; A1: dc=+1(右), dr=+1(下)
+        DEFB  7, 0FFH,01H   ; H1: dc=-1(左), dr=+1(下)
+        DEFB 56, 01H, 0FFH  ; A8: dc=+1(右), dr=-1(上)
+        DEFB 63, 0FFH,0FFH  ; H8: dc=-1(左), dr=-1(上)
+
 DIR_DR:
         DEFB -1,-1,-1, 0,0, 1,1,1
 DIR_DC:
@@ -288,6 +296,15 @@ OBS_BEST:       DEFB 0          ; OppBestScore 内部作業用 (8bit: max=184)
 OBS_COUNT:      DEFB 0          ; OppBestScore: 相手合法手数
 OBS2_MIN_AI:    DEFB 0          ; OppBestScore_d2: AI最善スコアの最小値
 AI_MOB_COUNT:   DEFB 0          ; CountMobility: AI合法手数
+
+; ---- CountStable work area ----
+CS_SIDE:        DEFB 0          ; CountStable: 対象サイド
+CS_COUNT:       DEFB 0          ; CountStable: 安定石数作業用
+CS_OFF:         DEFB 0          ; CountStable: 現在のコーナーoffset
+CS_DC:          DEFB 0          ; CountStable: 行方向 (+1 or FFH=-1)
+CS_DR:          DEFB 0          ; CountStable: 列方向 (+1 or FFH=-1)
+AI_STABLE:      DEFB 0          ; AIの安定石数
+OPP_STABLE:     DEFB 0          ; 相手の安定石数
 
 ; ---- フェーズ管理 ----
 GAME_PHASE:     DEFB 0      ; 0=序盤 1=中盤 2=終盤 (AIset先頭で設定)
@@ -1315,6 +1332,146 @@ CE_Next:
 
 
 ; ---------------------------------------------------------
+; CountStable
+;   簡易安定石カウント: コーナー + そこから連続する辺の石
+; Input:  D = side
+; Output: A = stable count
+; Destroys: AF, BC, DE, HL
+; ---------------------------------------------------------
+CountStable:
+        LD   A,D
+        LD   (CS_SIDE),A
+        XOR  A
+        LD   (CS_COUNT),A
+
+        LD   HL,CS_CORNER_TBL
+        LD   B,4                ; 4コーナー
+
+CS_CRN_LOOP:
+        PUSH BC
+        PUSH HL
+
+        LD   A,(HL)              ; offset
+        LD   (CS_OFF),A
+        INC  HL
+        LD   A,(HL)              ; dc
+        LD   (CS_DC),A
+        INC  HL
+        LD   A,(HL)              ; dr
+        LD   (CS_DR),A
+
+        ; コーナーが自分の石かチェック
+        LD   A,(CS_OFF)
+        LD   E,A
+        LD   D,0
+        LD   HL,BOARD
+        ADD  HL,DE
+        LD   A,(HL)
+        LD   E,A
+        LD   A,(CS_SIDE)
+        CP   E
+        JP   NZ,CS_CRN_SKIP
+
+        ; コーナー自体をカウント
+        LD   HL,CS_COUNT
+        INC  (HL)
+
+        ; corner_row(B), corner_col(C) を計算
+        LD   A,(CS_OFF)
+        LD   E,A
+        AND  07H
+        LD   C,A             ; C = corner_col
+        LD   A,E
+        RRCA
+        RRCA
+        RRCA
+        AND  07H
+        LD   B,A             ; B = corner_row
+
+        ; --- 行スキャン (B=固定, C=変化) ---
+CS_ROW_LOOP:
+        LD   A,C
+        LD   E,A
+        LD   A,(CS_DC)
+        ADD  A,E             ; A = col + dc
+        LD   C,A
+        CP   8               ; 範囲外? (<0 は 248〜255 になり>=8 で検出)
+        JP   NC,CS_COL_INIT
+        PUSH BC
+        LD   A,B
+        SLA  A
+        SLA  A
+        SLA  A
+        ADD  A,C             ; A = row*8+col
+        LD   E,A
+        LD   D,0
+        LD   HL,BOARD
+        ADD  HL,DE
+        LD   A,(HL)
+        POP  BC
+        LD   E,A
+        LD   A,(CS_SIDE)
+        CP   E
+        JP   NZ,CS_COL_INIT
+        LD   HL,CS_COUNT
+        INC  (HL)
+        JP   CS_ROW_LOOP
+
+        ; --- 列スキャン (C=固定, B=変化) ---
+CS_COL_INIT:
+        ; corner_row, corner_col を再計算
+        LD   A,(CS_OFF)
+        LD   E,A
+        AND  07H
+        LD   C,A             ; C = corner_col
+        LD   A,E
+        RRCA
+        RRCA
+        RRCA
+        AND  07H
+        LD   B,A             ; B = corner_row
+
+CS_COL_LOOP:
+        LD   A,B
+        LD   E,A
+        LD   A,(CS_DR)
+        ADD  A,E             ; A = row + dr
+        LD   B,A
+        CP   8
+        JP   NC,CS_CRN_SKIP
+        PUSH BC
+        LD   A,B
+        SLA  A
+        SLA  A
+        SLA  A
+        ADD  A,C
+        LD   E,A
+        LD   D,0
+        LD   HL,BOARD
+        ADD  HL,DE
+        LD   A,(HL)
+        POP  BC
+        LD   E,A
+        LD   A,(CS_SIDE)
+        CP   E
+        JP   NZ,CS_CRN_SKIP
+        LD   HL,CS_COUNT
+        INC  (HL)
+        JP   CS_COL_LOOP
+
+CS_CRN_SKIP:
+        POP  HL              ; テーブル先頭に戻す
+        LD   DE,3
+        ADD  HL,DE           ; 次のエントリへ
+        POP  BC
+        DEC  B
+        JP   NZ,CS_CRN_LOOP
+
+        LD   A,(CS_COUNT)
+        RET
+
+
+; ---------------------------------------------------------
 ; EG_GetSaveAddr
 ;   EG_DEPTH の値に対応する BOARD_SAVE バッファアドレスを返す
 ;   depth 0 -> BOARD_SAVE1
@@ -1438,6 +1595,17 @@ AMM_LOOP:
         LD   A,(AiSide)
         LD   D,A
         CALL CountMobility
+
+        ; 安定石カウント (Step3)
+        LD   A,(AiSide)
+        LD   D,A
+        CALL CountStable
+        LD   (AI_STABLE),A
+
+        LD   A,(HumSide)
+        LD   D,A
+        CALL CountStable
+        LD   (OPP_STABLE),A
         POP  AF
 
         LD   E,A
