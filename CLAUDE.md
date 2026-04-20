@@ -4,8 +4,8 @@
 `F:\ClaudeCode\Z80-Othello\asm\` 以下を絶対パスで参照・編集する
 （旧パス `F:\oke\Z80\ASM\オセロ\` は参照しない）
 
-**現在の作業対象: `F:\ClaudeCode\Z80-Othello\asm\MM2_AB_EG.ASM`（アセンブル通過・実機確認中）**
-ベースファイル: `F:\ClaudeCode\Z80-Othello\asm\RVS8_MM2_AB.ASM`
+**現在の作業対象: `F:\ClaudeCode\Z80-Othello\asm\MM2_AB_D3.ASM`（実機確認済み・大会用調整中）**
+ベースファイル: `F:\ClaudeCode\Z80-Othello\asm\MM2_AB_EV.ASM`
 
 ## 開発フロー（Python版を正とする）
 
@@ -134,10 +134,10 @@ max score = 120 + 64 flips = 184 < 256 (byte-safe)
 
 ## 次のTODO（優先順）
 
-1. **終盤完全読み（AIset_EG/SearchFull）を一時凍結** — 閾値=1 でもフリーズ発生、原因不明のため保留
-2. **現行最新: MM2_AB_EV.ASM** — depth-2 α-β + ムーブオーダリング + 評価関数強化（実機確認済み）
+1. **MM2_AB_D3.ASM 終盤 depth-3 の処理時間を実機計測** — 大会制限4秒以内か確認、超える場合は D3_THRESHOLD を小さく調整
+2. **終盤完全読み（AIset_EG/SearchFull）を一時凍結** — 閾値=1 でもフリーズ発生、原因不明のため保留
 3. ~~PASS連続2回・DRAW の動作テスト~~ ✓ 完了（gameDisplay.py 修正済み）
-4. depth-3 検討（処理時間が許容範囲か確認してから）
+4. ~~depth-3 実装~~ ✓ 完了（MM2_AB_D3.ASM、空き<20で depth-3 切り替え）
 5. ROM ブート化（オセロ完成後）
 
 ## ROM ブート化計画（オセロ完成後）

@@ -1264,5 +1264,30 @@ MM2_AB_EV.ASM をベースに depth-3 を実装・実機動作確認済み。
 
 - 処理時間 12秒は長い可能性あり → 高速化を検討
   - 選択肢A: OppBestScore_d3レベルのβ-cutoff追加
-  - 選択肢B: 序盤はdepth-2・終盤でdepth-3 に切り替え
+  - 選択肢B: 序盤はdepth-2・終盤でdepth-3 に切り替え ← 実装済み
   - 選択肢C: 現状のまま許容する
+
+---
+
+## MM2_AB_D3.ASM depth切り替え実装 (2026-04-21)
+
+オセロ大会の制限時間4秒に対応するため、空きマス数で depth-2/3 を切り替える機能を追加。
+
+### 実装内容
+
+```
+空きマス >= D3_THRESHOLD(=20) → depth-2（< 1秒、序盤〜中盤）
+空きマス <  D3_THRESHOLD(=20) → depth-3（終盤、手数が絞られ速い）
+```
+
+- `D3_THRESHOLD EQU 20` 定数追加（1行変更で調整可能）
+- `EMPTY_CACHE` / `USE_DEPTH3` 変数追加
+- AIset 入口で CountEmpty 結果を保存し閾値判定
+- AMM_LOOP で `USE_DEPTH3` に基づき OppBestScore_d2/d3 を切り替え
+- OppBestScore_d2 を復元（depth-2 パス用）
+
+### 次のTODO
+
+1. 実機で終盤 depth-3 の処理時間を計測し、4秒以内か確認
+2. 超える場合は `D3_THRESHOLD` を小さく調整（15、10 など）
+3. 問題なければ大会用として確定
