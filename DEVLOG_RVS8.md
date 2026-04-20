@@ -1230,3 +1230,39 @@ Step1〜4 全て完了・実機動作確認済み。
 ### 次のTODO（明日）
 
 depth-3 Z80実装（MM2_AB_EV.ASM をベースに MM2_AB_D3.ASM として作成予定）
+
+---
+
+## MM2_AB_D3.ASM 実機確認 (2026-04-21)
+
+MM2_AB_EV.ASM をベースに depth-3 を実装・実機動作確認済み。
+
+### 実装内容
+
+| ply | 関数 | 内容 |
+|-----|------|------|
+| ply1 | AIset | AI着手（BOARD_SAVE1）← 変更なし |
+| ply2 | OppBestScore_d3 | OPP着手（BOARD_SAVE2）← d2を置換 |
+| ply3 | AiBestScore_d3 | AI着手（BOARD_SAVE3）← 新規 |
+| leaf | ID3_LOOP | OPP手をPOS_WEIGHT+flipsで推定 ← 新規 |
+
+### α-β 枝刈り
+
+- ID3_LOOP: `OBS3_BEST >= D3_AI_ALPHA` → α-cutoff
+- AiBestScore_d3: `D3_AI_BEST >= OBS2_MIN_AI` → β-cutoff
+- OppBestScore_d3側のβ-cutoffは未実装
+
+### 処理時間
+
+| 局面 | 処理時間 |
+|------|----------|
+| 最大 | 約12秒 |
+
+フリーズなし・正常終局を確認。
+
+### 次のTODO
+
+- 処理時間 12秒は長い可能性あり → 高速化を検討
+  - 選択肢A: OppBestScore_d3レベルのβ-cutoff追加
+  - 選択肢B: 序盤はdepth-2・終盤でdepth-3 に切り替え
+  - 選択肢C: 現状のまま許容する
