@@ -1119,12 +1119,22 @@ OBS_END:
 
 
 ; ---------------------------------------------------------
-; OppBestScore_d2  [depth-2版 + α-β枝刈り]
+; OppBestScore_d3  [depth-3版 + α-β枝刈り]
+;
+;   各OPP手について:
+;     1. SaveBoard(BOARD_SAVE2) + ApplyMove(OPP)
+;     2. AiBestScore_d3 → D3_AI_BEST = AIのply3最善スコア
+;     3. OBS2_MIN_AI = min(OBS2_MIN_AI, D3_AI_BEST)
+;        ※ D3_AI_BEST >= OBS2_MIN_AI なら更新不要(OPPに既により良い手あり)
+;     4. RestoreBoard(BOARD_SAVE2)
+;
+;   AiBestScore_d3内でβ-cutoff実施済み (D3_AI_BEST >= OBS2_MIN_AI → 早期終了)
+;
 ; Input:  D = opponent side (= HumSide)
-; Output: A = opp_best / OBS_COUNT = 相手合法手数
+; Output: A = opp_best (=255-OBS2_MIN_AI) / OBS_COUNT = 相手合法手数
 ; Destroys: AF,BC,DE,HL
 ; ---------------------------------------------------------
-OppBestScore_d2:
+OppBestScore_d3:
         XOR  A
         LD   (OBS_COUNT),A
         LD   A,0FFH
@@ -1133,11 +1143,11 @@ OppBestScore_d2:
         XOR  A
         LD   (OD2_IDX),A
 
-OD2_LOOP:
+OD3_LOOP:
         ; POS_ORDER[OD2_IDX] からマスoffsetを取得 → B=row, C=col
         LD   A,(OD2_IDX)
         CP   64
-        JP   NC,OD2_END
+        JP   NC,OD3_END
         LD   HL,POS_ORDER
         LD   C,A
         LD   B,0
@@ -1162,7 +1172,7 @@ OD2_LOOP:
         POP  BC
 
         OR   A
-        JP   Z,OD2_NEXTCOL
+        JP   Z,OD3_NEXTCOL
 
         LD   HL,OBS_COUNT
         INC  (HL)
@@ -1174,100 +1184,34 @@ OD2_LOOP:
         LD   D,A
         CALL ApplyMove
 
-        XOR  A
-        LD   (OBS_BEST),A
+        CALL AiBestScore_d3  ; D3_AI_BEST = AIのply3最善スコア
 
-        XOR  A
-        LD   (ID2_IDX),A
-
-ID2_LOOP:
-        ; POS_ORDER[ID2_IDX] からマスoffsetを取得 → B=row, C=col
-        LD   A,(ID2_IDX)
-        CP   64
-        JP   NC,ID2_END
-        LD   HL,POS_ORDER
-        LD   C,A
-        LD   B,0
-        ADD  HL,BC
-        LD   A,(HL)          ; A = offset
-        LD   E,A
-        AND  07H
-        LD   C,A             ; col
-        LD   A,E
-        RRCA
-        RRCA
-        RRCA
-        AND  07H
-        LD   B,A             ; row
-
-        LD   A,(AiSide)
-        LD   D,A
-        PUSH BC
-        PUSH DE
-        CALL CountAllFlips
-        POP  DE
-        POP  BC
-
-        OR   A
-        JR   Z,ID2_NEXT
-
-        LD   E,A
-        PUSH BC
-        LD   A,B
-        SLA  A
-        SLA  A
-        SLA  A
-        ADD  A,C
-        LD   C,A
-        LD   B,0
-        LD   HL,POS_WEIGHT
-        ADD  HL,BC
-        LD   A,(HL)
-        ADD  A,E
-        POP  BC
-
-        LD   HL,OBS_BEST
-        CP   (HL)
-        JR   C,ID2_NEXT
-        JR   Z,ID2_NEXT
-        LD   (HL),A
-        ; α-cutoff: OBS_BEST >= OBS2_MIN_AI → 枝刈り
+        ; OBS2_MIN_AI = min(OBS2_MIN_AI, D3_AI_BEST)
+        LD   A,(D3_AI_BEST)
         LD   HL,OBS2_MIN_AI
         CP   (HL)
-        JR   NC,ID2_END
+        JR   NC,OD3_RESTORE  ; D3_AI_BEST >= OBS2_MIN_AI → 更新不要
+        LD   (HL),A          ; 新しい最小値を記録
 
-ID2_NEXT:
-        LD   A,(ID2_IDX)
-        INC  A
-        LD   (ID2_IDX),A
-        JP   ID2_LOOP
-
-ID2_END:
-        LD   A,(OBS_BEST)
-        LD   HL,OBS2_MIN_AI
-        CP   (HL)
-        JR   NC,OD2_RESTORE
-        LD   (HL),A
-
-OD2_RESTORE:
+OD3_RESTORE:
         LD   HL,BOARD_SAVE2
         CALL RestoreBoard
         POP  BC
 
-OD2_NEXTCOL:
+OD3_NEXTCOL:
         LD   A,(OD2_IDX)
         INC  A
         LD   (OD2_IDX),A
-        JP   OD2_LOOP
+        JP   OD3_LOOP
 
-OD2_END:
+OD3_END:
         LD   A,(OBS_COUNT)
         OR   A
-        JR   NZ,OD2_RETURN
+        JR   NZ,OD3_RETURN
         XOR  A
         RET
 
-OD2_RETURN:
+OD3_RETURN:
         LD   A,0FFH
         LD   HL,OBS2_MIN_AI
         SUB  (HL)
@@ -1455,6 +1399,13 @@ AB_D3_LOOP:
         JR   C,AB_D3_POP
         JR   Z,AB_D3_POP
         LD   (HL),A
+
+        ; β-cutoff: D3_AI_BEST >= OBS2_MIN_AI → OPPはこのply2手を選ばない
+        LD   HL,OBS2_MIN_AI
+        CP   (HL)
+        POP  BC
+        JP   NC,AB_D3_END    ; D3_AI_BEST >= OPP現在最小 → 残りAI手の探索打ち切り
+        JP   AB_D3_NEXT
 
 AB_D3_POP:
         POP  BC
@@ -1718,7 +1669,7 @@ EGA_D2:
 ;   各合法手について:
 ;     1. SaveBoard(SAVE1)
 ;     2. 仮着手 (ApplyMove)
-;     3. OppBestScore_d2 -> opp_best, OBS_COUNT=相手合法手数
+;     3. OppBestScore_d3 -> opp_best, OBS_COUNT=相手合法手数
 ;     4. CountMobility(AI) -> AI_MOB_COUNT
 ;     5. RestoreBoard(SAVE1)
 ;     6. mm_score = POS_WEIGHT[ai_pos] + (255-opp_best) + (ai_mob-opp_mob+64)
@@ -1794,7 +1745,7 @@ AMM_LOOP:
 
         LD   A,(HumSide)
         LD   D,A
-        CALL OppBestScore_d2
+        CALL OppBestScore_d3
 
         PUSH AF
         LD   A,(AiSide)
