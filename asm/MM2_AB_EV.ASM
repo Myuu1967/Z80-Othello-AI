@@ -1419,7 +1419,7 @@ AMM_LOOP:
         POP  BC
 
         OR   A
-        JR   Z,AMM_NEXTCOL
+        JP   Z,AMM_NEXTCOL
 
         PUSH BC
 
