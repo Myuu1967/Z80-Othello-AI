@@ -134,7 +134,7 @@ max score = 120 + 64 flips = 184 < 256 (byte-safe)
 
 ## 次のTODO（優先順）
 
-1. **MM2_AB_D3.ASM 終盤 depth-3 の処理時間を実機計測** — 大会制限4秒以内か確認、超える場合は D3_THRESHOLD を小さく調整
+1. ~~**MM2_AB_D3.ASM 終盤 depth-3 の処理時間を実機計測**~~ ✓ 完了（先手・後手ともに4秒以下確認、大会用確定）
 2. **終盤完全読み（AIset_EG/SearchFull）を一時凍結** — 閾値=1 でもフリーズ発生、原因不明のため保留
 3. ~~PASS連続2回・DRAW の動作テスト~~ ✓ 完了（gameDisplay.py 修正済み）
 4. ~~depth-3 実装~~ ✓ 完了（MM2_AB_D3.ASM、空き<20で depth-3 切り替え）
