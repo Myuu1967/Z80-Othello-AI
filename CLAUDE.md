@@ -135,9 +135,9 @@ max score = 120 + 64 flips = 184 < 256 (byte-safe)
 ## 次のTODO（優先順）
 
 1. **終盤完全読み（AIset_EG/SearchFull）を一時凍結** — 閾値=1 でもフリーズ発生、原因不明のため保留
-2. **現行方針: depth-2 α-β（AIset/OppBestScore_d2）のみで進める**
-3. PASS連続2回・DRAW の動作テスト
-4. ムーブオーダリング → depth-3 検討
+2. **現行最新: MM2_AB_MO.ASM** — depth-2 α-β + ムーブオーダリング（実機確認済み・高速化確認）
+3. ~~PASS連続2回・DRAW の動作テスト~~ ✓ 完了（gameDisplay.py 修正済み）
+4. depth-3 検討（処理時間が許容範囲か確認してから）
 5. ROM ブート化（オセロ完成後）
 
 ## ROM ブート化計画（オセロ完成後）
