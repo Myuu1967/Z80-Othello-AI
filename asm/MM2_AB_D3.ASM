@@ -110,6 +110,9 @@ ENDGAME_THRESHOLD  EQU 0    ; 終盤完全読み無効
 EARLY_GAME  EQU 44          ; 空き >= 44: 序盤
 MID_GAME    EQU 12          ; 空き >= 12: 中盤、else: 終盤
 
+; depth切り替え閾値
+D3_THRESHOLD EQU 20         ; 空き < 20 → depth-3 / 空き >= 20 → depth-2
+
 
 ; =========================================================
 ; Strings (0-terminated)
@@ -312,6 +315,8 @@ OPP_STABLE:     DEFB 0          ; 相手の安定石数
 
 ; ---- フェーズ管理 ----
 GAME_PHASE:     DEFB 0      ; 0=序盤 1=中盤 2=終盤 (AIset先頭で設定)
+EMPTY_CACHE:    DEFB 0      ; AIset先頭でCountEmptyの結果を保存
+USE_DEPTH3:     DEFB 0      ; 0=depth-2 / 1=depth-3 (AIset先頭で設定)
 
 ; ---- ムーブオーダリング用ループインデックス ----
 AMM_IDX:        DEFB 0          ; AIset 外ループ POS_ORDER インデックス
@@ -1119,6 +1124,160 @@ OBS_END:
 
 
 ; ---------------------------------------------------------
+; OppBestScore_d2  [depth-2版 + α-β枝刈り]
+; Input:  D = opponent side (= HumSide)
+; Output: A = opp_best / OBS_COUNT = 相手合法手数
+; Destroys: AF,BC,DE,HL
+; ---------------------------------------------------------
+OppBestScore_d2:
+        XOR  A
+        LD   (OBS_COUNT),A
+        LD   A,0FFH
+        LD   (OBS2_MIN_AI),A
+
+        XOR  A
+        LD   (OD2_IDX),A
+
+OD2_LOOP:
+        LD   A,(OD2_IDX)
+        CP   64
+        JP   NC,OD2_END
+        LD   HL,POS_ORDER
+        LD   C,A
+        LD   B,0
+        ADD  HL,BC
+        LD   A,(HL)
+        LD   E,A
+        AND  07H
+        LD   C,A
+        LD   A,E
+        RRCA
+        RRCA
+        RRCA
+        AND  07H
+        LD   B,A
+
+        LD   A,(HumSide)
+        LD   D,A
+        PUSH BC
+        PUSH DE
+        CALL CountAllFlips
+        POP  DE
+        POP  BC
+
+        OR   A
+        JP   Z,OD2_NEXTCOL
+
+        LD   HL,OBS_COUNT
+        INC  (HL)
+
+        PUSH BC
+        LD   HL,BOARD_SAVE2
+        CALL SaveBoard
+        LD   A,(HumSide)
+        LD   D,A
+        CALL ApplyMove
+
+        XOR  A
+        LD   (OBS_BEST),A
+
+        XOR  A
+        LD   (ID2_IDX),A
+
+ID2_LOOP:
+        LD   A,(ID2_IDX)
+        CP   64
+        JP   NC,ID2_END
+        LD   HL,POS_ORDER
+        LD   C,A
+        LD   B,0
+        ADD  HL,BC
+        LD   A,(HL)
+        LD   E,A
+        AND  07H
+        LD   C,A
+        LD   A,E
+        RRCA
+        RRCA
+        RRCA
+        AND  07H
+        LD   B,A
+
+        LD   A,(AiSide)
+        LD   D,A
+        PUSH BC
+        PUSH DE
+        CALL CountAllFlips
+        POP  DE
+        POP  BC
+
+        OR   A
+        JR   Z,ID2_NEXT
+
+        LD   E,A
+        PUSH BC
+        LD   A,B
+        SLA  A
+        SLA  A
+        SLA  A
+        ADD  A,C
+        LD   C,A
+        LD   B,0
+        LD   HL,POS_WEIGHT
+        ADD  HL,BC
+        LD   A,(HL)
+        ADD  A,E
+        POP  BC
+
+        LD   HL,OBS_BEST
+        CP   (HL)
+        JR   C,ID2_NEXT
+        JR   Z,ID2_NEXT
+        LD   (HL),A
+        ; α-cutoff: OBS_BEST >= OBS2_MIN_AI → 枝刈り
+        LD   HL,OBS2_MIN_AI
+        CP   (HL)
+        JR   NC,ID2_END
+
+ID2_NEXT:
+        LD   A,(ID2_IDX)
+        INC  A
+        LD   (ID2_IDX),A
+        JP   ID2_LOOP
+
+ID2_END:
+        LD   A,(OBS_BEST)
+        LD   HL,OBS2_MIN_AI
+        CP   (HL)
+        JR   NC,OD2_RESTORE
+        LD   (HL),A
+
+OD2_RESTORE:
+        LD   HL,BOARD_SAVE2
+        CALL RestoreBoard
+        POP  BC
+
+OD2_NEXTCOL:
+        LD   A,(OD2_IDX)
+        INC  A
+        LD   (OD2_IDX),A
+        JP   OD2_LOOP
+
+OD2_END:
+        LD   A,(OBS_COUNT)
+        OR   A
+        JR   NZ,OD2_RETURN
+        XOR  A
+        RET
+
+OD2_RETURN:
+        LD   A,0FFH
+        LD   HL,OBS2_MIN_AI
+        SUB  (HL)
+        RET
+
+
+; ---------------------------------------------------------
 ; OppBestScore_d3  [depth-3版 + α-β枝刈り]
 ;
 ;   各OPP手について:
@@ -1683,8 +1842,11 @@ AIset:
         LD   A,0FFH
         LD   (AI_BEST_ROW),A
 
-        ; フェーズ判定: CountEmpty → GAME_PHASE (0=序盤 1=中盤 2=終盤)
+        ; フェーズ判定 + depth選択
         CALL CountEmpty          ; A = 空きマス数
+        LD   (EMPTY_CACHE),A     ; 空きマス数を保存
+
+        ; GAME_PHASE 判定
         CP   EARLY_GAME
         JP   NC,AEV_EARLY        ; 空き >= 44 → 序盤
         CP   MID_GAME
@@ -1698,6 +1860,15 @@ AEV_MID:
         LD   A,1
 AEV_SET_PHASE:
         LD   (GAME_PHASE),A
+
+        ; depth選択: 空き < D3_THRESHOLD → depth-3, それ以外 → depth-2
+        LD   A,(EMPTY_CACHE)
+        CP   D3_THRESHOLD
+        LD   A,0                 ; デフォルト: depth-2
+        JR   NC,AMM_SET_DEPTH    ; 空き >= D3_THRESHOLD → depth-2
+        INC  A                   ; A=1: depth-3
+AMM_SET_DEPTH:
+        LD   (USE_DEPTH3),A
 
         XOR  A
         LD   (AMM_IDX),A
@@ -1745,7 +1916,14 @@ AMM_LOOP:
 
         LD   A,(HumSide)
         LD   D,A
+        LD   A,(USE_DEPTH3)
+        OR   A
+        JP   Z,AMM_CALL_D2
         CALL OppBestScore_d3
+        JP   AMM_AFTER_OBS
+AMM_CALL_D2:
+        CALL OppBestScore_d2
+AMM_AFTER_OBS:
 
         PUSH AF
         LD   A,(AiSide)
