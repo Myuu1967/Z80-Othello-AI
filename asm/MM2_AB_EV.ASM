@@ -1646,14 +1646,14 @@ AMM_LOOP:
         JP   Z,AMM_EVAL_LATE
 
 AMM_EVAL_EARLY:
-        ; 序盤: HL += (mob_diff + 64) * 12  (×8 + ×4)
+        ; 序盤: HL += (mob_diff+64)*12 + (stable_diff+8)*30
         LD   A,(AI_MOB_COUNT)
         LD   D,A
         LD   A,(OBS_COUNT)
         LD   E,A
         LD   A,D
         SUB  E
-        ADD  A,64            ; A = mob_diff + 64 (0..128)
+        ADD  A,64            ; A = mob_diff+64 (0..128)
         PUSH HL
         LD   L,A
         LD   H,0
@@ -1666,11 +1666,38 @@ AMM_EVAL_EARLY:
         LD   D,H
         LD   E,L
         POP  HL
+        ADD  HL,DE           ; HL += mob_term
+
+        ; stable_diff * 30 (= ×32 - ×2)
+        PUSH BC
+        LD   A,(AI_STABLE)
+        LD   D,A
+        LD   A,(OPP_STABLE)
+        LD   E,A
+        LD   A,D
+        SUB  E
+        ADD  A,8             ; A = stable_diff+8 (0..16)
+        PUSH HL
+        LD   L,A
+        LD   H,0
+        ADD  HL,HL           ; ×2
+        LD   B,H
+        LD   C,L             ; BC = ×2
+        ADD  HL,HL           ; ×4
+        ADD  HL,HL           ; ×8
+        ADD  HL,HL           ; ×16
+        ADD  HL,HL           ; ×32
+        OR   A
+        SBC  HL,BC           ; ×32-×2 = ×30
+        LD   D,H
+        LD   E,L
+        POP  HL
         ADD  HL,DE
+        POP  BC
         JP   AMM_SCORE_CMP
 
 AMM_EVAL_MID:
-        ; 中盤: HL += (mob_diff + 64) * 8  (×8)
+        ; 中盤: HL += (mob_diff+64)*8 + (stable_diff+8)*50
         LD   A,(AI_MOB_COUNT)
         LD   D,A
         LD   A,(OBS_COUNT)
@@ -1687,11 +1714,40 @@ AMM_EVAL_MID:
         LD   D,H
         LD   E,L
         POP  HL
+        ADD  HL,DE           ; HL += mob_term
+
+        ; stable_diff * 50 (= ×32 + ×16 + ×2)
+        PUSH BC
+        LD   A,(AI_STABLE)
+        LD   D,A
+        LD   A,(OPP_STABLE)
+        LD   E,A
+        LD   A,D
+        SUB  E
+        ADD  A,8
+        PUSH HL
+        LD   L,A
+        LD   H,0
+        ADD  HL,HL           ; ×2
+        LD   B,H
+        LD   C,L             ; BC = ×2
+        ADD  HL,HL           ; ×4
+        ADD  HL,HL           ; ×8
+        ADD  HL,HL           ; ×16
+        LD   D,H
+        LD   E,L             ; DE = ×16
+        ADD  HL,HL           ; ×32
+        ADD  HL,DE           ; ×32+×16 = ×48
+        ADD  HL,BC           ; ×48+×2 = ×50
+        LD   D,H
+        LD   E,L
+        POP  HL
         ADD  HL,DE
+        POP  BC
         JP   AMM_SCORE_CMP
 
 AMM_EVAL_LATE:
-        ; 終盤: HL += (mob_diff + 64) * 4  (Step4で石差重視に変更予定)
+        ; 終盤: HL += (mob_diff+64)*4 + (stable_diff+8)*30
         LD   A,(AI_MOB_COUNT)
         LD   D,A
         LD   A,(OBS_COUNT)
@@ -1707,7 +1763,34 @@ AMM_EVAL_LATE:
         LD   D,H
         LD   E,L
         POP  HL
+        ADD  HL,DE           ; HL += mob_term
+
+        ; stable_diff * 30 (= ×32 - ×2)
+        PUSH BC
+        LD   A,(AI_STABLE)
+        LD   D,A
+        LD   A,(OPP_STABLE)
+        LD   E,A
+        LD   A,D
+        SUB  E
+        ADD  A,8
+        PUSH HL
+        LD   L,A
+        LD   H,0
+        ADD  HL,HL           ; ×2
+        LD   B,H
+        LD   C,L             ; BC = ×2
+        ADD  HL,HL           ; ×4
+        ADD  HL,HL           ; ×8
+        ADD  HL,HL           ; ×16
+        ADD  HL,HL           ; ×32
+        OR   A
+        SBC  HL,BC           ; ×30
+        LD   D,H
+        LD   E,L
+        POP  HL
         ADD  HL,DE
+        POP  BC
 
 AMM_SCORE_CMP:
         PUSH HL
