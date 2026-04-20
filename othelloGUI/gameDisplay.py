@@ -191,7 +191,7 @@ def feed_byte(b):
 # ─── 行単位パーサー (UART・ログ再生で共用) ──────────
 def process_line(line):
     """1行分の文字列を解析して盤面・ステータスを更新する"""
-    global score_text, move_text, human_text, player_stone, winner_stone, retry_mode, choose_mode
+    global score_text, move_text, time_text, human_text, player_stone, winner_stone, retry_mode, choose_mode
 
     row_idx, cells = parse_board_line(line)
     if row_idx is not None:
@@ -221,12 +221,16 @@ def process_line(line):
         human_text = "YOU PASS"
         draw_status()
 
+    elif line.startswith('Game ended by consecutive'):
+        time_text = "Consec. PASS"
+        draw_status()
+
     elif line == 'GAME OVER':
         move_text  = "GAME OVER"
         human_text = ""
         draw_status()
 
-    elif 'wins' in line or line == 'DRAW':
+    elif 'wins' in line or line in ('DRAW', 'Draw'):
         if 'BLACK' in line:
             human_text   = "BLACK wins"
             winner_stone = 'X'

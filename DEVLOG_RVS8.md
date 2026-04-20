@@ -1144,3 +1144,30 @@ PASS は発生しなかったため PASS 時の挙動は未確認。
 
 1. 閾値を 3〜4 に上げて処理時間を計測（PIOA D7 → Pico 計測）
 2. PASS 連続2回・DRAW の動作テスト
+
+---
+
+## gameDisplay.py 連続PASS表示バグ修正 (2026-04-20)
+
+### 症状
+連続PASS2回でゲーム終了したとき、Pico画面の時間表示欄が空白のままで "Consec. PASS" が表示されなかった。
+
+### 原因
+`process_line()` の `global` 宣言に `time_text` が抜けており、ローカル変数への代入になっていた。
+
+### 修正
+`global score_text, move_text, human_text, ...` に `time_text` を追加。
+合わせて `Game ended by consecutive passes.` 受信時に `time_text = "Consec. PASS"` をセットする処理を追加。
+
+---
+
+## gameDisplay.py DRAW表示バグ修正 (2026-04-20)
+
+### 症状
+DRAW時に Pico 画面に何も表示されなかった。
+
+### 原因
+`process_line()` の条件が `line == 'DRAW'`（大文字）だったが、Z80の `MSG_DRAW` は `"Draw"`（小文字d）を送出する。
+
+### 修正
+`line in ('DRAW', 'Draw')` に変更。

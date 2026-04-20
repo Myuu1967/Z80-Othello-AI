@@ -134,10 +134,10 @@ max score = 120 + 64 flips = 184 < 256 (byte-safe)
 
 ## 次のTODO（優先順）
 
-1. **MM2_AB_EG.ASM 実機確認・処理時間計測**（α-β 修正済み、実機ロード待ち）
-2. 閾値調整（ENDGAME_THRESHOLD 現在=2、実機確認後に 4〜8 への拡張を検討）
-3. ムーブオーダリング → depth-3 検討
-4. PASS連続2回・DRAW の動作テスト
+1. **終盤完全読み（AIset_EG/SearchFull）を一時凍結** — 閾値=1 でもフリーズ発生、原因不明のため保留
+2. **現行方針: depth-2 α-β（AIset/OppBestScore_d2）のみで進める**
+3. PASS連続2回・DRAW の動作テスト
+4. ムーブオーダリング → depth-3 検討
 5. ROM ブート化（オセロ完成後）
 
 ## ROM ブート化計画（オセロ完成後）

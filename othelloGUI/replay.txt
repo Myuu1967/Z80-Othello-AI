@@ -85,3 +85,32 @@ GAME OVER
 WHITE(O) wins
 
 r:Retry or q:Quit ?
+
+  A B C D E F G H
+1 O O O O O O O X
+2 O O O O O O X X
+3 O X O X X X O X
+4 O X X O X O X X
+5 O X X X O X X X
+6 O X X X O O X X
+7 O X X X X X O X
+8 . O O O O O O O
+X:30 O:33
+AI PASS
+
+  A B C D E F G H
+1 O O O O O O O X
+2 O O O O O O X X
+3 O X O X X X O X
+4 O X X O X O X X
+5 O X X X O X X X
+6 O X X X O O X X
+7 O X X X X X O X
+8 . O O O O O O O
+X:30 O:33
+YOU PASS
+
+GAME OVER
+Draw
+
+r:Retry or q:Quit ?
