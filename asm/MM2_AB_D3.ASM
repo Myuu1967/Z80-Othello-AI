@@ -111,7 +111,7 @@ EARLY_GAME  EQU 44          ; 空き >= 44: 序盤
 MID_GAME    EQU 12          ; 空き >= 12: 中盤、else: 終盤
 
 ; depth切り替え閾値
-D3_THRESHOLD EQU 20         ; 空き < 20 → depth-3 / 空き >= 20 → depth-2
+D3_THRESHOLD EQU 25         ; 空き < 25 → depth-3 / 空き >= 25 → depth-2
 
 
 ; =========================================================
