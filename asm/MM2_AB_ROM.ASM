@@ -22,20 +22,30 @@
         JP   START          ; リセットベクタ
 
 ; ---------------------------------------------------------
+; InitCTC3
+;   CTC3 (port 13H) をタイマーモードで起動
+;   10MHz / 16 / 4 = 156250Hz → SIOA RXCA/TXCA へ供給
+;   SIOA x16モードで 156250/16 ≈ 9600bps
+; Destroys: AF
+; ---------------------------------------------------------
+InitCTC3:
+        LD   A,17H              ; タイマーモード / プリスケーラ/16 / TC続く / リセット
+        OUT  (13H),A            ; CTC3 コントロールワード
+        LD   A,04H              ; 時定数 = 4 (/4) → タイマー起動
+        OUT  (13H),A            ; CTC3 時定数
+        RET
+
+; ---------------------------------------------------------
 ; InitSIOA
-;   SIOA (SIO チャンネルA) を 9600bps/8bit/1stop で初期化
-;   モニタ ROM 0196H を解析して再現
+;   SIOA を 9600bps/8bit/1stop で初期化
+;   CTC3 起動後に呼ぶこと
 ; Destroys: AF, BC, HL
 ; ---------------------------------------------------------
 InitSIOA:
         LD   HL,SIOA_INIT_TBL
         LD   B,9
         LD   C,19H              ; SIOA_CTL
-        OTIR                    ; 9バイトを一気に送信
-        LD   A,17H
-        OUT  (13H),A            ; ボーレートクロック設定
-        LD   A,04H
-        OUT  (13H),A            ; 時定数 → 9600bps
+        OTIR
         RET
 
 SIOA_INIT_TBL:
@@ -224,7 +234,8 @@ BOARD_INIT:
 START:
         LD   SP,0FFF0H
         DI
-        CALL InitSIOA           ; SIOA 初期化 (ROM起動時はモニタ不在)
+        CALL InitCTC3           ; CTC3 起動 (SIOA ボーレートクロック供給)
+        CALL InitSIOA           ; SIOA 初期化
 
         CALL InitPIOB           ; PIOB: SW0-SW4 入力モード
         CALL InitBoard          ; RAM の BOARD を初期値でクリア

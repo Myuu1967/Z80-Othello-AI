@@ -12,17 +12,27 @@ LF        EQU 0AH
         JP   START
 
 ; ---------------------------------------------------------
-; InitSIOA  (モニタ ROM 0196H 相当)
+; InitCTC3
+;   CTC3 (port 13H) をタイマーモードで起動
+;   10MHz / 16 / 4 = 156250Hz → SIOA RXCA/TXCA へ供給
+;   SIOA x16モードで 156250/16 ≈ 9600bps
+; ---------------------------------------------------------
+InitCTC3:
+        LD   A,17H          ; タイマーモード / プリスケーラ/16 / TC続く / リセット
+        OUT  (13H),A        ; CTC3 コントロールワード
+        LD   A,04H          ; 時定数 = 4 (/4) → タイマー起動
+        OUT  (13H),A        ; CTC3 時定数
+        RET
+
+; ---------------------------------------------------------
+; InitSIOA
+;   CTC3 起動後に呼ぶこと
 ; ---------------------------------------------------------
 InitSIOA:
         LD   HL,SIOA_INIT_TBL
         LD   B,9
         LD   C,SIOA_CTL
         OTIR
-        LD   A,17H
-        OUT  (13H),A        ; ボーレートクロック選択
-        LD   A,04H
-        OUT  (13H),A        ; 時定数 → 9600bps
         RET
 
 SIOA_INIT_TBL:
@@ -44,7 +54,8 @@ MSG:    DEFM CR,LF,"SIOA OK",CR,LF,0
 START:
         LD   SP,0FFF0H
         DI
-        CALL InitSIOA
+        CALL InitCTC3       ; 先にボーレートクロックを起動
+        CALL InitSIOA       ; その後 SIOA 初期化
 
 MAIN:
         LD   HL,MSG
