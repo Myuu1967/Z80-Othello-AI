@@ -146,6 +146,8 @@ MSG_BYE:        DEFM CR,LF,"Bye.",CR,LF,0
 
 MSG_PASSEND:    DEFM CR,LF,"Game ended by consecutive passes.",CR,LF,0
 
+MSG_STARTUP:    DEFM CR,LF,"Reversi AI Started",CR,LF,CR,LF,0
+
 ; =========================================================
 ; Tables  ← ROM 領域
 ; =========================================================
@@ -226,6 +228,9 @@ START:
 
         CALL InitPIOB           ; PIOB: SW0-SW4 入力モード
         CALL InitBoard          ; RAM の BOARD を初期値でクリア
+
+        LD   DE,MSG_STARTUP
+        CALL PrintString
 
         CALL PrintBoard
         CALL DecideFirstTurn
