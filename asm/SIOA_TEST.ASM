@@ -54,8 +54,21 @@ MSG:    DEFM CR,LF,"SIOA OK",CR,LF,0
 START:
         LD   SP,0FFF0H
         DI
-        CALL InitCTC3       ; 先にボーレートクロックを起動
-        CALL InitSIOA       ; その後 SIOA 初期化
+        ; PIOA/PIOB 初期化 (モニタROM 0080H と同等)
+        LD   A,0CFH
+        OUT  (1DH),A        ; PIOA CMD: Mode3
+        LD   A,01H
+        OUT  (1DH),A        ; PIOA 方向: bit0=入力, 他=出力
+        LD   A,0CFH
+        OUT  (1FH),A        ; PIOB CMD: Mode3
+        LD   A,00H
+        OUT  (1FH),A        ; PIOB 方向: 全出力
+        ; PPI0/PPI1 初期化 (モニタROM 0090H と同等)
+        LD   A,80H
+        OUT  (33H),A        ; PPI0: Mode0, 全出力
+        OUT  (37H),A        ; PPI1: Mode0, 全出力
+        CALL InitSIOA       ; 先に SIOA 初期化
+        CALL InitCTC3       ; その後ボーレートクロックを起動
 
 MAIN:
         LD   HL,MSG
