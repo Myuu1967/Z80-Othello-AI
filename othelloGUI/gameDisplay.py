@@ -291,7 +291,7 @@ draw_board()
 draw_status()
 
 # ログファイルがあれば Z80 なしで表示テスト (/replay.txt)
-replay_log('/replay.txt')
+# replay_log('/replay.txt')
 
 # ─── メインループ ─────────────────────────────────────
 line_buf = b''
