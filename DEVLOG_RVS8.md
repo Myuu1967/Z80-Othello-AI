@@ -1427,4 +1427,76 @@ GA最適化済み POS_WEIGHT テーブル・POS_ORDER 更新版を実機で動�
 | 後手（白）での動作 | ✓ 正常 |
 | 異常終了・フリーズ | なし |
 
+処理時間: 先手・後手ともに4秒以下。大会用バージョンとして確定。
+
+---
+
+## ROM単独起動化 作業開始 (2026-04-22)
+
+### 背景・目的
+
+モニタROM不要で電源ON直後からオセロが起動するよう、ROM 0000H からの単独起動版を作成する。
+ハードウェア: **TMPZ84C015-BF10**（Z80 CPU + SIO/CTC/PIO 内蔵）
+外部クロック: 約20MHz → 内部CGC（クロック発生回路）で1/2 → CPU/CTC は10MHz動作
+
+### 作成ファイル
+
+`asm/MM2_AB_ROM.ASM` — MM2_AB_D3.ASM をベースにROM起動対応
+
+- ORG 0000H に JP START のリセットベクタ
+- ORG 8000H に RAM変数（BOARD, BOARD_SAVEx, 各ワーク変数）
+- BOARD_INIT はROM内に定数として配置
+- GO_QUIT で RST 00H（0000H へのリセット）
+
+### InitCTC3 / InitSIOA 初期化順序の判明
+
+モニタROM（AKI-80MONI_ROM.HEX）を解析し、0191H付近に初期化ルーティンを確認:
+
+```
+0191: LD HL, 01A8H   ; SIOA_INIT_TBL
+0194: LD B, 9
+0196: LD C, 19H      ; SIOA CTL port
+0198: OTIR           ; SIOAを先に初期化（レジスタ設定のみ、クロック不要）
+019A: LD A, 17H
+019C: OUT (13H), A   ; CTC3 コントロールワード（タイマーモード/プリスケーラ/16）
+019E: LD A, 04H
+01A0: OUT (13H), A   ; CTC3 時定数=4 → タイマー起動
+01A2: RET
+
+01A8: 18 04 44 03 C1 05 6A 01 00  ; SIOA_INIT_TBL（9バイト）
+```
+
+**重要な発見:**
+- モニタは SIOA初期化(OTIR) → CTC3起動 の順
+- SIOAのレジスタ設定はクロック不要なので先でも可
+- ボーレートクロックの計算: 10MHz / 16(プリスケーラ) / 4(TC) = 156,250Hz → x16モードで ≈9765bps（9600bpsとして使用）
+- CTC3ポートアドレス: 13H ✓、制御ワード: 17H ✓、時定数: 04H ✓
+
+### 現状（調査中）
+
+`SIOA_TEST.ASM`（最小限のSIOAテスト、CRLFループ送信）を書き込んだが TeraTerm に何も表示されない。
+
+考えられる原因:
+- CGC /2 の影響でボーレート計算のどこかがずれている可能性
+- TMPZ84C015固有の初期化が必要な可能性（ポート33H/37Hへのモニタ初期化コードの意味未解明）
+- ハードウェア配線・ROM書き込み確認が必要
+
+### SIOA_TEST.ASM の構成
+
+```asm
+START:
+    LD  SP, 0FFF0H
+    DI
+    CALL InitCTC3    ; CTC3起動（タイマー mode, /16, TC=4）
+    CALL InitSIOA    ; SIOA設定（x16, 8N1, Tx/Rx有効）
+MAIN:
+    LD  HL, MSG      ; "\r\nSIOA OK\r\n"
+    (送信ループ)
+    (約1秒ディレイ)
+    JP  MAIN
+
+PutChar:
+    (TxRDY=RR0 bit2 待ち → OUT (18H), A)
+```
+
 **MM2_AB_D3.ASM（D3_THRESHOLD=25、GA最適化テーブル）を大会用バージョンとして確定。**

@@ -46,8 +46,8 @@ Z80アセンブラで直接デバッグするより Python で先に確認する
 
 | 項目 | 値 |
 |---|---|
-| CPU | Z80 (Super AKI-80) |
-| クロック | 10MHz (1T = 0.1μs) |
+| CPU | TMPZ84C015-BF10 (Super AKI-80) |
+| 外部クロック | 約20MHz → CGC(1/2) → CPU/CTC: 10MHz (1T = 0.1μs) |
 | シリアル | SIOA: DAT=18H, CTL=19H |
 | PIOA | DATA=1CH, CMD=1DH（D7: 計測トリガ出力） |
 | PIOB | DATA=1EH, CMD=1FH（SW0-SW4: スイッチ入力, Mode3） |
@@ -142,7 +142,7 @@ max score = 128 + 64 flips = 192 < 256 (byte-safe)
 6. **終盤完全読み（AIset_EG/SearchFull）を一時凍結** — 閾値=1 でもフリーズ発生、原因不明のため保留
 7. ~~PASS連続2回・DRAW の動作テスト~~ ✓ 完了（gameDisplay.py 修正済み）
 8. ~~depth-3 実装~~ ✓ 完了（MM2_AB_D3.ASM、空き<20で depth-3 切り替え）
-9. ROM ブート化（オセロ完成後）
+9. **ROM ブート化（作業中）** — MM2_AB_ROM.ASM 作成済み、SIOA_TEST.ASM でシリアル動作未確認（TeraTerm無反応）
 
 ## ROM ブート化計画（オセロ完成後）
 
