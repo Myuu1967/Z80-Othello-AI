@@ -4,8 +4,8 @@
 `F:\ClaudeCode\Z80-Othello\asm\` 以下を絶対パスで参照・編集する
 （旧パス `F:\oke\Z80\ASM\オセロ\` は参照しない）
 
-**現在の作業対象: `F:\ClaudeCode\Z80-Othello\asm\MM2_AB_D3.ASM`（実機確認済み・大会用調整中）**
-ベースファイル: `F:\ClaudeCode\Z80-Othello\asm\MM2_AB_EV.ASM`
+**現在の作業対象: ROM ブート化（`MM2_AB_ROM.ASM` / `SIOA_TEST.ASM`）**
+大会用バージョン確定済み: `F:\ClaudeCode\Z80-Othello\asm\MM2_AB_D3.ASM`
 
 ## 開発フロー（Python版を正とする）
 
@@ -63,18 +63,23 @@ RVS8_GREEDY.ASM
                  └─ RVS8_MM1_MOB.ASM
                       └─ RVS8_PIOSW.ASM  ← 実機確認済み
                            └─ RVS8_MM2_AB.ASM  ← 実機確認済み
-                                └─ MM2_AB_EG.ASM  ← 現行作業中（アセンブル通過）
+                                └─ MM2_AB_EG.ASM  ← 終盤完全読み（凍結中）
+                                     └─ MM2_AB_MO.ASM  ← ムーブオーダリング
+                                          └─ MM2_AB_EV.ASM  ← 評価関数改善
+                                               └─ MM2_AB_D3.ASM  ← 大会用確定版
+                                                    └─ MM2_AB_ROM.ASM  ← ROM起動版（作業中）
 ```
 
-## 実装済み機能 (MM2_AB_EG.ASM) ← 現行最新
+## 実装済み機能 (MM2_AB_D3.ASM) ← 大会用確定版
 
-- Minimax depth-2 + α-β 枝刈り（OppBestScore_d2、α-cutoff実装済み）
-- **終盤完全読み**: 空きマス ≤ ENDGAME_THRESHOLD(=2) で AIset_EG (negamax + α-β) に切り替え
-- `SF_ALPHA_TBL[10]`: depth 別 alpha テーブルで negamax α-β 実装
+- Minimax depth-2 + α-β 枝刈り / 空き < 25 で depth-3 切り替え
+- ムーブオーダリング（POS_ORDER テーブル順に探索）
+- 序盤/中盤/終盤フェーズ切り替え + モビリティ差重み付け + 安定石評価（CountStable）
+- **GA最適化 POS_WEIGHT テーブル**（2026-04-22 確定）
 - 先後手選択: SW0=先手(黒), SW2=後手(白)、SIOA '1'/'2' でも選択可
-- SaveBoard/RestoreBoard: HL パラメータ渡し、BOARD_SAVE1/SAVE2/BOARD_EG_SAVES
 - PIOB スイッチ入力（SW0-SW4, Mode3）
 - PIOA D7 → Pico GPIO15 AI処理時間計測
+- 処理時間: 先手・後手ともに **4秒以下**（D3_THRESHOLD=25）
 
 ## 評価式 (depth-2)
 
@@ -142,7 +147,7 @@ max score = 128 + 64 flips = 192 < 256 (byte-safe)
 6. **終盤完全読み（AIset_EG/SearchFull）を一時凍結** — 閾値=1 でもフリーズ発生、原因不明のため保留
 7. ~~PASS連続2回・DRAW の動作テスト~~ ✓ 完了（gameDisplay.py 修正済み）
 8. ~~depth-3 実装~~ ✓ 完了（MM2_AB_D3.ASM、空き<20で depth-3 切り替え）
-9. **ROM ブート化（作業中）** — MM2_AB_ROM.ASM 作成済み、SIOA_TEST.ASM でシリアル動作未確認（TeraTerm無反応）
+9. **ROM ブート化（作業中）** — AT28C256 ピン非互換問題を確認・修正待ち（下記参照）
 
 ## ROM ブート化計画（オセロ完成後）
 
@@ -182,6 +187,26 @@ SIOA_INIT_TBL:
 ```
 
 HEX の 0000H-7FFFH 範囲のみ 28C256 に書き込む。
+
+### AT28C256 ピン非互換問題と対処法（2026-04-23 判明）
+
+27C256 と AT28C256 はピン配置が**非互換**：
+
+| ピン | 27C256 | AT28C256 |
+|------|--------|----------|
+| 1番  | VPP（通常運転時 VCC） | A14 |
+| 27番 | A14 | WE#（書込制御） |
+
+Super AKI-80 ソケットはピン1=VCC、ピン27=Z80 A14 のため、AT28C256 を挿すと：
+- A14（ピン1）= VCC = 常に HIGH → 読み出し位置がずれる
+- WE#（ピン27）= Z80 A14 = 0 → OE#=LOW と同時に LOW → チップがデータを出力しない
+
+**修正手順（未実施）：**
+1. AT28C256 の**ピン1をソケットから浮かせて GND に接続**（A14=0 固定）
+2. AT28C256 の**ピン27をソケットから浮かせて VCC に接続**（WE#=HIGH 固定）
+3. EEPROM オフセット **0000H** にコードを書き込む
+
+コードは 16KB 未満なので下位16KB（A14=0 固定）で十分。
 
 ---
 
