@@ -1986,3 +1986,49 @@ OBS_SCORE_MAX        EQU  192  ; POS_WEIGHT_MAX(128) + FLIPS_MAX(64)
 ```
 
 根拠: mob_diff+64 max=96（合法手上限32+64）、stable_diff+8 max=24（AI_STABLE≦16実用上限）
+
+---
+
+## RFCT000 前準備・追加決定事項 (2026-04-25)
+
+### 調査で判明したこと
+
+- 新しい名前（P1_IDX 等）はファイル内に存在しない → 衝突なし、`replace_all` で安全
+- `OppBestScore`（depth-1版、1085行）がどこからも `CALL` されていないデッドコードと判明
+  - `OBS_BEST`・`OBS_COUNT` を d2 版と共用していたが、削除しても d2/d3 に影響なし
+
+### ラベル表に追加した漏れ分（2026-04-25 承認）
+
+| 旧ラベル | 新ラベル | 対象 |
+|---------|---------|------|
+| `AEV_EARLY` | `P1_PHASE_EARLY` | AIset フェーズ判定（序盤） |
+| `AEV_MID` | `P1_PHASE_MID` | AIset フェーズ判定（中盤） |
+| `AEV_SET_PHASE` | `P1_PHASE_LATE` | AIset フェーズ判定（終盤/LATE） |
+| `AMM_SET_DEPTH` | `P1_SET_DEPTH` | AIset depth選択 |
+| `AMM_CALL_D2` | `P1_CALL_D2` | OppBestScore_d2 呼び出し分岐 |
+| `AMM_AFTER_OBS` | `P1_AFTER_OBS` | OppBestScore 呼び出し後 |
+| `OD2_RETURN` | `P2_RETURN` | OppBestScore_d2 戻り処理 |
+| `OD3_RETURN` | `P2D3_RETURN` | OppBestScore_d3 戻り処理 |
+
+### RFCT000 で実施すること（確定）
+
+- `OppBestScore`（depth-1版）を削除（デッドコード）
+- 上記全ラベル・変数・関数名をリネーム
+- ロジック・計算は一切変更しない
+
+### リファクタの範囲・方針（2026-04-25 確定）
+
+以下について検討し、**大会前は着手しない**と決定：
+
+**評価値の定義統一**（255補数を繰り返す視点反転構造の整理）
+- 全探索関数の計算ロジック書き直しが必要
+- `SearchFull`（negamax方式）との整合が複雑
+- バグ混入リスクが高い → **大会後の課題**
+
+**minimax 構造の抜本的見直し**
+- 探索構造（4-plyツリー・各関数の役割）は正しく動いている
+- 触る必要なし → **現計画（RFCT000〜003）で十分**
+
+**α-β カットオフの「効いていなかった」問題**
+- 構造的な問題ではなく定数の計算ミス（D2_MOB_MAX が大きすぎた）
+- RFCT001（定数値修正）・RFCT002（閾値修正）で対処済み → **追加作業不要**

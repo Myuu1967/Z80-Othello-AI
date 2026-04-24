@@ -262,6 +262,14 @@ Z80 SIOA  ──┬──→ PC ターミナル
 | `OD3_LOOP/NEXTCOL/END/BCUT` | `P2D3_LOOP/P2D3_NEXT/P2D3_END/P2D3_BCUT` | OppBestScore_d3 |
 | `AB_D3_LOOP/NEXT/END/POP` | `P3_LOOP/P3_NEXT/P3_END/P3_POP` | AiBestScore_d3 |
 | `ID3_L/NEXT/END` | `LF_LOOP/LF_NEXT/LF_END` | ID3_LOOP（LeafEval） |
+| `AEV_EARLY` | `P1_PHASE_EARLY` | AIset フェーズ判定（序盤） |
+| `AEV_MID` | `P1_PHASE_MID` | AIset フェーズ判定（中盤） |
+| `AEV_SET_PHASE` | `P1_PHASE_LATE` | AIset フェーズ判定（終盤） |
+| `AMM_SET_DEPTH` | `P1_SET_DEPTH` | AIset depth選択 |
+| `AMM_CALL_D2` | `P1_CALL_D2` | OppBestScore_d2 呼び出し分岐 |
+| `AMM_AFTER_OBS` | `P1_AFTER_OBS` | OppBestScore 呼び出し後 |
+| `OD2_RETURN` | `P2_RETURN` | OppBestScore_d2 戻り処理 |
+| `OD3_RETURN` | `P2D3_RETURN` | OppBestScore_d3 戻り処理 |
 
 ### 関数名リネーム表
 
@@ -272,6 +280,7 @@ Z80 SIOA  ──┬──→ PC ターミナル
 | `AiBestScore_d3` | `Ply3Best` | ply3 AI探索 |
 | `ID3_LOOP` | `LeafEval` | leaf 評価ループ |
 | `AIset` | 変更なし | 外部(DoTurn)から呼ぶため維持 |
+| `OppBestScore` | 削除（デッドコード） | depth-1版、どこからも呼ばれていない |
 
 ### RFCT001 で追加する定数
 
