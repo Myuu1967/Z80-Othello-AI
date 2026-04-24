@@ -4,7 +4,7 @@
 `F:\ClaudeCode\Z80-Othello\asm\` 以下を絶対パスで参照・編集する
 （旧パス `F:\oke\Z80\ASM\オセロ\` は参照しない）
 
-**現在の作業対象: `MM2_AB_BCUT.ASM` — OppBestScore_d3 β-cutoff 実装済み（アセンブル・実機確認待ち）**
+**現在の作業対象: `RFCT000.ASM`（作成予定） — リファクタリング開始。MM2_AB_BCUT.ASM をベースに変数名・ラベル名・関数名を整理する。ロジック変更なし。**
 大会用バージョン確定済み: `F:\ClaudeCode\Z80-Othello\asm\MM2_AB_D3.ASM`
 
 ## 開発フロー（Python版を正とする）
@@ -68,7 +68,11 @@ RVS8_GREEDY.ASM
                                           └─ MM2_AB_EV.ASM  ← 評価関数改善
                                                └─ MM2_AB_D3.ASM  ← 大会用確定版
                                                     ├─ MM2_AB_ROM.ASM  ← ROM起動版（保留中）
-                                                    └─ MM2_AB_BCUT.ASM ← β-cutoff実装版（確認待ち）
+                                                    └─ MM2_AB_BCUT.ASM ← β-cutoff実装版（実機確認済み・リファクタリング元）
+                                                         └─ RFCT000.ASM ← 変数名・ラベル名・関数名整理（ロジック変更なし）
+                                                              └─ RFCT001.ASM ← カットオフ定数値見直し（MOB_STABLE_CAP フェーズ別）
+                                                                   └─ RFCT002.ASM ← AMM_BETA_SKIP 閾値修正 + フェーズ別分岐
+                                                                        └─ RFCT003.ASM ← D3_THRESHOLD 調整・総合テスト版
 ```
 
 ## 実装済み機能 (MM2_AB_D3.ASM) ← 大会用確定版
@@ -150,13 +154,17 @@ max score = 128 + 64 flips = 192 < 256 (byte-safe)
 8. ~~depth-3 実装~~ ✓ 完了（MM2_AB_D3.ASM、空き<20で depth-3 切り替え）
 9. **ROM ブート化** — 27C256 EPROM（UV消去型）で実施予定。AT28C256は非互換のため不使用。気が向いたタイミングで実施。
 10. ~~**MM2_AB_BCUT.ASM アセンブル・実機確認**~~ ✓ 完了（2026-04-23、先手・後手ともに正常動作確認）
-11. ~~**OppBestScore_d3 β-cutoff 実装**~~ ✓ 実装完了（2026-04-24、アセンブル・実機確認待ち） — **D3_THRESHOLD 調整・実機計測（次の作業）**
-12. 終盤完全読み復活（速度改善後に再挑戦）
-13. GA再最適化（β-cutoff実装後、depth-3で学習）
-14. **評価値表示** — AIが選んだ手の評価値（AI_BEST_SCORE）をSIOA出力し、PC側（TeraTerm）とPico側（gameDisplay.py）の両方で表示する
-15. **投了/中断処理** — ゲーム中にSW4等で中断し、先後手選択の初期画面に戻る（Z80側＋Pico側LCD リセット）
-16. **Pico棋譜記録・盤面ログ** — 対局中の全着手と盤面スナップショットをLittleFSに保存。replay_log機能と連携
-17. **EPROM（27C256）単独起動動作確認** — モニタROMと差し替えて電源ON直後からオセロが起動することを確認
+11. ~~**OppBestScore_d3 β-cutoff 実装**~~ ✓ 完了（2026-04-24）。D2_MOB_MAX=1600 に設定済み。実機で5秒の局面が残存 → リファクタで解消予定
+12. **【RFCT000】変数名・ラベル名・関数名の整理** — MM2_AB_BCUT.ASM をコピーしてリネームのみ実施。ロジック変更なし。アセンブル通過で完了。命名規則は下記参照。
+13. **【RFCT001】α-β カットオフ定数の見直し** — `D2_MOB_MAX`→`MOB_STABLE_CAP` リネーム＋フェーズ別定数3つに分割。正しい上限値を計算・設定。アセンブル確認。
+14. **【RFCT002】AMM_BETA_SKIP 閾値修正＋フェーズ別分岐追加** — α-cutoff の閾値を `OBS_SCORE_MAX=192` に変更。プリフィルタにフェーズ別 CAP 切り替え追加。実機で速度計測。
+15. **【RFCT003】D3_THRESHOLD 調整・総合テスト** — 速度改善確認後に 25→30 を狙う。複数局＋処理時間計測。5/6 凍結目標（5/9 大会、バッファ3日）
+16. 終盤完全読み復活（速度改善後に再挑戦）
+17. GA再最適化（リファクタ完了後、depth-3で学習）
+18. **評価値表示** — AIが選んだ手の評価値（AI_BEST_SCORE）をSIOA出力し、PC側（TeraTerm）とPico側（gameDisplay.py）の両方で表示する
+19. **投了/中断処理** — ゲーム中にSW4等で中断し、先後手選択の初期画面に戻る（Z80側＋Pico側LCD リセット）
+20. **Pico棋譜記録・盤面ログ** — 対局中の全着手と盤面スナップショットをLittleFSに保存。replay_log機能と連携
+21. **EPROM（27C256）単独起動動作確認** — モニタROMと差し替えて電源ON直後からオセロが起動することを確認
 
 ## ROM ブート化計画（オセロ完成後）
 
@@ -220,6 +228,60 @@ HEX の 0000H-7FFFH 範囲のみ 28C256 に書き込む。
 Z80 PIOA D7 ──→ Pico GPIO15 → measureTimeWithZ80.py
 Z80 SIOA  ──┬──→ PC ターミナル
             └──→ Pico UART → LCD盤面描画（gameDisplay.py・動作確認済み）
+```
+
+## RFCT000 命名規則（2026-04-25 決定）
+
+### 変数名リネーム表
+
+| 旧 (BCUT) | 新 (RFCT000〜) | 意味 |
+|----------|--------------|------|
+| `AMM_IDX` | `P1_IDX` | ply1 AIループインデックス |
+| `OD2_IDX` | `P2_IDX` | ply2 OPPループインデックス（d2/d3共用） |
+| `ID2_IDX` | `P3_IDX` | ply3 AIループインデックス |
+| `LD3_IDX` | `LF_IDX` | leaf OPPループインデックス |
+| `OBS2_MIN_AI` | `P2_ALPHA` | OPP ply2 の α 値（AI応手スコアの最小値） |
+| `OD2_BETA` | `P1_BETA` | AI ply1 の β 閾値（d2/d3共用） |
+| `OBS_BEST` | `P2_INNER_BEST` | OppBestScore_d2 内ループの一時最善値 |
+| `D3_AI_BEST` | `P3_BEST` | ply3 AI最善スコア |
+| `D3_AI_ALPHA` | `LF_ALPHA` | leaf の α 閾値 |
+| `OBS3_BEST` | `LF_BEST` | leaf OPP最善スコア |
+| `AMM_POS_W` | `P1_POS_W` | ply1 AI位置重みキャッシュ |
+| `D2_MOB_MAX` | `MOB_STABLE_CAP` | mob_stable項の上限（RFCT001でフェーズ別に分割） |
+
+### ラベル名リネーム表
+
+| 旧 (BCUT) | 新 (RFCT000〜) | 対象関数 |
+|----------|--------------|---------|
+| `AMM_LOOP/NEXTCOL/END` | `P1_LOOP/P1_NEXT/P1_END` | AIset 外ループ |
+| `AMM_BETA_SKIP/DONE/DISABLE` | `P1_BSKIP/P1_BDONE/P1_BDIS` | AIset プリフィルタ |
+| `AMM_EVAL_EARLY/MID/LATE` | `P1_EVAL_EARLY/MID/LATE` | AIset 評価フェーズ分岐 |
+| `AMM_SCORE_CMP` | `P1_SCORE_CMP` | AIset スコア比較 |
+| `OD2_LOOP/NEXTCOL/END/BCUT` | `P2_LOOP/P2_NEXT/P2_END/P2_BCUT` | OppBestScore_d2 |
+| `ID2_LOOP/NEXT/END` | `P2I_LOOP/P2I_NEXT/P2I_END` | OppBestScore_d2 内ループ |
+| `OD3_LOOP/NEXTCOL/END/BCUT` | `P2D3_LOOP/P2D3_NEXT/P2D3_END/P2D3_BCUT` | OppBestScore_d3 |
+| `AB_D3_LOOP/NEXT/END/POP` | `P3_LOOP/P3_NEXT/P3_END/P3_POP` | AiBestScore_d3 |
+| `ID3_L/NEXT/END` | `LF_LOOP/LF_NEXT/LF_END` | ID3_LOOP（LeafEval） |
+
+### 関数名リネーム表
+
+| 旧 (BCUT) | 新 (RFCT000〜) | 意味 |
+|----------|--------------|------|
+| `OppBestScore_d2` | `Ply2Best_D2` | depth-2 時のply2探索 |
+| `OppBestScore_d3` | `Ply2Best_D3` | depth-3 時のply2探索 |
+| `AiBestScore_d3` | `Ply3Best` | ply3 AI探索 |
+| `ID3_LOOP` | `LeafEval` | leaf 評価ループ |
+| `AIset` | 変更なし | 外部(DoTurn)から呼ぶため維持 |
+
+### RFCT001 で追加する定数
+
+```asm
+; mob_stable_term 最大値（フェーズ別）
+;   mob_diff+64 max = 96 (= 32moves + 64), stable_diff+8 max = 24
+MOB_STABLE_CAP_EARLY EQU 1872  ; 96×12 + 24×30
+MOB_STABLE_CAP_MID   EQU 1968  ; 96×8  + 24×50
+MOB_STABLE_CAP_LATE  EQU 1104  ; 96×4  + 24×30
+OBS_SCORE_MAX        EQU  192  ; POS_WEIGHT_MAX(128) + FLIPS_MAX(64)
 ```
 
 ## Gitコミット

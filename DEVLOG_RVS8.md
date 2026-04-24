@@ -1817,3 +1817,172 @@ depth-3 パス（空き < 25）で OPP が十分悪い応手を見つけた時�
 1. **アセンブル・実機確認**（先手・後手ともに正常動作を確認）
 2. **処理時間計測**（PIOA D7 → Pico 計測、D3_THRESHOLD=25 で改善幅を確認）
 3. **D3_THRESHOLD 調整**（25 → 30 以上を狙う）
+
+---
+
+## MM2_AB_BCUT.ASM 実機確認・β-cutoff 無効問題の分析 (2026-04-24)
+
+### 実機テスト結果
+
+動作不具合なし。ただし **AI が以前より弱く見える**（角を相手に渡す手を打つ）報告あり。
+
+### 原因分析: β-cutoff が dead code
+
+β-cutoff が実際には一度も発火していないことが判明。
+
+**OD2_BETA の計算式:**
+
+```
+OD2_BETA = AI_BEST_SCORE - AMM_POS_W - D2_MOB_MAX
+```
+
+| 変数 | 値 | 備考 |
+|---|---|---|
+| AI_BEST_SCORE (max) | ≈ 1935 | depth-3 が有効な中盤以降の実測上限 |
+| AMM_POS_W (min) | 1 | Xマス（POS_WEIGHT最小値） |
+| D2_MOB_MAX | 2016 | EQU定数（序盤基準の保守的最大値） |
+
+`1935 - 1 - 2016 = -82` → 負値 → 16bit 演算で 0 以下とみなし OD2_BETA=0 → **β-cutoff 無効化**
+
+`D2_MOB_MAX = 2016` は序盤（フリップ最大 64 × mob 最大 32 ≒ 2016）の理論値。しかし depth-3
+が有効になる中盤以降の実際の上限は約 1552。この乖離により常に OD2_BETA ≤ 0 となる。
+
+### AI が弱く見える原因
+
+β-cutoff が dead code のため、BCUT.ASM の探索結果は D3.ASM と **数学的に同一**。  
+弱さの原因は以下のいずれか（または複合）：
+
+1. D3.ASM との比較で統計的ゆらぎ（対局数不足）
+2. GA最適化 POS_WEIGHT が depth-2 向けに最適化されており depth-3 では最善でない
+3. 偶然の一致（角を渡した手が実際に最善だった可能性）
+
+### 修正方針
+
+`D2_MOB_MAX EQU 2016` → `D2_MOB_MAX EQU 1600` に変更することで β-cutoff が有効になる。
+
+**修正後の期待値:**
+- `1935 - 1 - 1600 = 334` → OD2_BETA > 0 → β-cutoff が発火する局面が存在
+- depth-3 の処理時間短縮 → D3_THRESHOLD を安全に引き上げ可能
+
+### D3_THRESHOLD 引き上げの前提条件
+
+「閾値を上げれば強くなる」は正しいが、速度改善なしに閾値を上げると処理時間が悪化する。
+
+| 状態 | depth-3 最大処理時間 | D3_THRESHOLD=25 | D3_THRESHOLD=30 |
+|---|---|---|---|
+| 現在（β-cutoff 無効） | 5〜6 秒 | 一部で 4 秒超え | さらに悪化 |
+| D2_MOB_MAX=1600（β-cutoff 有効） | 要計測 | 要計測 | 多分 OK |
+
+**正しい順序:**
+
+1. `D2_MOB_MAX EQU 1600` に変更してアセンブル
+2. 実機で処理時間計測（D3_THRESHOLD=25 のまま）
+3. 4 秒以内を確認できたら `D3_THRESHOLD` を 30 以上に引き上げ
+4. 再度処理時間計測・動作確認
+
+---
+
+## リファクタリング計画 (2026-04-24)
+
+### 背景
+
+D2_MOB_MAX=1600 変更後の実機計測で依然 5 秒の局面が発生。  
+コードの複雑さがバグ・チューニング困難の根本原因と判断し、大会前にリファクタリングを実施する。
+
+- 大会: 2026-05-09
+- 凍結目標: 2026-05-06（バッファ3日）
+- 作業可能日数: 約13日
+
+### 判明した追加問題
+
+α-cutoff（AMM_BETA_SKIP）も同じ問題を抱えていることが判明。
+
+```
+ply1 の AMM_BETA_SKIP 条件: OD2_BETA > 255 → AI の手をスキップ
+```
+
+`OD2_BETA = AI_BEST_SCORE - AMM_POS_W - D2_MOB_MAX` で計算されるため、  
+D2_MOB_MAX が大きすぎると α-cutoff も発火しない（β-cutoff と完全に同一の問題）。
+
+### リファクタリング ステップ（大項目）
+
+| # | 内容 | 工数目安 |
+|---|---|---|
+| Step1 | **α-β カットオフ値の計算見直し** — `D2_MOB_MAX`→`MOB_STABLE_CAP` リネーム＋正しい上限値計算。α/β 両方に反映 | 1〜2日 |
+| Step2 | **変数名・コメント整理** — 4-plyツリー構造をコードで明示、変数名を意味明確に | 1〜2日 |
+| Step3 | **D3_THRESHOLD 調整** — Step1 の速度改善確認後に設定（25→30 を狙う） | 半日 |
+| Step4 | **総合テスト** — 複数局＋処理時間計測 | 1〜2日 |
+
+### オセロ基礎構造について
+
+実機対局で盤面操作・反転・合法手判定・石数計数は問題なし確認済み。  
+リファクタリングはAIロジック（α-β探索）部分のみに集中できる。
+
+---
+
+## リファクタリング方針の詳細決定 (2026-04-25)
+
+### ファイル系譜方針
+
+`MM2_AB_BCUT.ASM` をベースに、ステップごとに番号付きファイルを作成する方式を採用。
+
+```
+MM2_AB_BCUT.ASM  ← 触らない（現行の動作確認済み版）
+  └─ RFCT000.ASM  ← 変数名・ラベル名・関数名リネームのみ（ロジック変更なし）
+       └─ RFCT001.ASM  ← カットオフ定数値をフェーズ別に分割
+            └─ RFCT002.ASM  ← AMM_BETA_SKIP 閾値修正 + フェーズ別分岐追加
+                 └─ RFCT003.ASM  ← D3_THRESHOLD 調整・総合テスト版
+```
+
+各ファイルはアセンブル通過後に git commit する。バグ混入時に一世代前に戻せる。
+
+### RFCT000 で決定した命名規則
+
+#### 変数名（DEFBラベル）
+
+| 旧 | 新 | 意味 |
+|---|---|---|
+| `AMM_IDX` | `P1_IDX` | ply1 AIループインデックス |
+| `OD2_IDX` | `P2_IDX` | ply2 OPPループインデックス（d2/d3共用） |
+| `ID2_IDX` | `P3_IDX` | ply3 AIループインデックス |
+| `LD3_IDX` | `LF_IDX` | leaf OPPループインデックス |
+| `OBS2_MIN_AI` | `P2_ALPHA` | OPP ply2 の α 値 |
+| `OD2_BETA` | `P1_BETA` | AI ply1 の β 閾値（d2/d3共用） |
+| `OBS_BEST` | `P2_INNER_BEST` | OppBestScore_d2 内ループ一時最善値 |
+| `D3_AI_BEST` | `P3_BEST` | ply3 AI最善スコア |
+| `D3_AI_ALPHA` | `LF_ALPHA` | leaf の α 閾値 |
+| `OBS3_BEST` | `LF_BEST` | leaf OPP最善スコア |
+| `AMM_POS_W` | `P1_POS_W` | ply1 AI位置重みキャッシュ |
+| `D2_MOB_MAX` | `MOB_STABLE_CAP` | mob_stable項の上限（RFCT001でフェーズ別分割） |
+
+#### ラベル名（JP/JR飛び先）
+
+| 旧 | 新 | 対象 |
+|---|---|---|
+| `AMM_LOOP/NEXTCOL/END` | `P1_LOOP/P1_NEXT/P1_END` | AIset外ループ |
+| `AMM_BETA_SKIP/DONE/DISABLE` | `P1_BSKIP/P1_BDONE/P1_BDIS` | AIsetプリフィルタ |
+| `OD2_LOOP/NEXTCOL/END/BCUT` | `P2_LOOP/P2_NEXT/P2_END/P2_BCUT` | OppBestScore_d2 |
+| `ID2_LOOP/NEXT/END` | `P2I_LOOP/P2I_NEXT/P2I_END` | OppBestScore_d2内ループ |
+| `OD3_LOOP/NEXTCOL/END/BCUT` | `P2D3_LOOP/P2D3_NEXT/P2D3_END/P2D3_BCUT` | OppBestScore_d3 |
+| `AB_D3_LOOP/NEXT/END/POP` | `P3_LOOP/P3_NEXT/P3_END/P3_POP` | AiBestScore_d3 |
+| `ID3_L/NEXT/END` | `LF_LOOP/LF_NEXT/LF_END` | ID3_LOOP |
+
+#### 関数名（CALLで呼ぶラベル）
+
+| 旧 | 新 |
+|---|---|
+| `OppBestScore_d2` | `Ply2Best_D2` |
+| `OppBestScore_d3` | `Ply2Best_D3` |
+| `AiBestScore_d3` | `Ply3Best` |
+| `ID3_LOOP` | `LeafEval` |
+
+### RFCT001 で追加する定数
+
+```asm
+MOB_STABLE_CAP_EARLY EQU 1872  ; 96×12 + 24×30
+MOB_STABLE_CAP_MID   EQU 1968  ; 96×8  + 24×50
+MOB_STABLE_CAP_LATE  EQU 1104  ; 96×4  + 24×30
+OBS_SCORE_MAX        EQU  192  ; POS_WEIGHT_MAX(128) + FLIPS_MAX(64)
+```
+
+根拠: mob_diff+64 max=96（合法手上限32+64）、stable_diff+8 max=24（AI_STABLE≦16実用上限）
