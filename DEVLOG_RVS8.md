@@ -1544,3 +1544,276 @@ AT28C256 のピン2本をソケットから浮かせて配線し直す:
 その後 EEPROM オフセット **0000H** にコードを書き込む。
 
 コードは 16KB 未満なので下位16KB（0000H〜3FFFH）で十分。
+
+### 方針変更 (2026-04-23)
+
+AT28C256 のピン改造は作業コストが高いため却下。
+**27C256 EPROM（UV消去型）を使用する方針に変更。**
+イレーサー・ライターは手元にある。気が向いたタイミングで消去・書き込みを実施予定。
+
+---
+
+## 次期改良計画 (2026-04-23)
+
+ROM起動化を一時保留し、オセロ AIの改良に着手する方針に決定。
+
+### 未実装の α-β 枝刈り（速度改善・D3_THRESHOLD拡大が目標）
+
+現在の枝刈り実装状況:
+
+| レベル | 関数 | cutoff | 状態 |
+|--------|------|--------|------|
+| leaf OPP | ID3_LOOP | α-cutoff: OBS3_BEST >= D3_AI_ALPHA | ✅ 実装済み |
+| ply3 AI | AiBestScore_d3 | β-cutoff: D3_AI_BEST >= OBS2_MIN_AI | ✅ 実装済み |
+| ply2 OPP | OppBestScore_d3 | β-cutoff: OBS2_MIN_AI が下がりすぎ → AIset早期終了 | ❌ **未実装** |
+| ply2 OPP | OppBestScore_d2 | 同上（depth-2パス） | ❌ **未実装** |
+
+#### OppBestScore_d3 の β-cutoff 概要
+
+```
+条件: POS_WEIGHT[ai_pos] + OBS2_MIN_AI + 128(最大mobility) ≤ AI_BEST_SCORE
+      → この AIの手は既存ベストを超えられない → OPP探索を早期終了
+```
+
+- `AI_BEST_SCORE` が 16bit なので Z80 での実装に工夫が必要
+- `AI_BEST_SCORE` の最大値は 503（0x1F7）なので high byte は 0 か 1 のみ
+- 実装方針: AIset 内で呼び出し前に 8bit 閾値 `D3_OPP_BETA` を計算して渡す
+
+### 改良ロードマップ更新 (2026-04-23)
+
+**OppBestScore_d2 の β-cutoff を優先することに決定。**
+理由: depth-2 パスはゲーム前半〜中盤（空き≥25、約35手分）で使われるため影響が大きい。
+depth-3 側（OppBestScore_d3）は空き<25の終盤のみ → 後回し。
+
+| 順序 | 内容 | 期待効果 | 難度 |
+|------|------|---------|------|
+| **1** | **OppBestScore_d2 β-cutoff 実装（次の作業）** | **序盤〜中盤の速度↑ → D3_THRESHOLD 拡大** | **中** |
+| 2 | OppBestScore_d3 β-cutoff 実装 | 終盤速度↑ | 中 |
+| 3 | 実機計測・D3_THRESHOLD 調整 | 4秒以内の最大値を確認 | 低 |
+| 4 | 終盤完全読み（SearchFull）復活 | 強さ↑ | 低（既存コードあり） |
+| 5 | GA再最適化（depth-3で学習） | 強さ↑ | 低（Python側） |
+
+### OppBestScore_d2 β-cutoff 実装設計 (2026-04-23)
+
+#### フェーズ別 mob_stable 最大値
+
+depth-2 パスでは終盤フェーズ（空き<12）は到達しない（常にdepth-3）。
+
+| フェーズ | mob最大 | stable最大 | 合計 |
+|---------|--------|-----------|------|
+| 序盤 (×12/×30) | 128×12=1536 | 16×30=480 | **2016** |
+| 中盤 (×8/×50)  | 128×8=1024  | 16×50=800 | **1824** |
+| 終盤 | depth-3パスのみ | — | — |
+
+#### β-cutoff 条件
+
+```
+mm_score = POS_W[ai_pos] + OBS2_MIN_AI + mob_stable_term
+cutoff 条件: POS_W + OBS2_MIN_AI + mob_stable_max ≤ AI_BEST_SCORE
+→ OBS2_MIN_AI ≤ AI_BEST_SCORE - POS_W - mob_stable_max  (= OD2_BETA)
+```
+
+`OD2_BETA` が負または 0 の場合は無効（`OD2_BETA=0` = disabled 扱い）。
+`OD2_BETA` が 256以上の場合は「この AI 手は絶対に既存ベストを超えられない」→ AI手ごとスキップ。
+
+#### 実装2ステップ
+
+**Step A: AIset 側（呼び出し前）**
+- `POS_WEIGHT[B,C]` を先読みして `AMM_POS_W` に保存（後の重複ルックアップも削除）
+- `OD2_BETA = AI_BEST_SCORE - AMM_POS_W - MOB_STABLE_MAX` (16bit計算)
+  - 負 → `OD2_BETA=0`（disabled）
+  - >255 → AI手をスキップ（`JP AMM_NEXTCOL`）
+  - 1..255 → `OD2_BETA` に保存
+
+**Step B: OppBestScore_d2 内（OBS2_MIN_AI 更新直後）**
+```asm
+; β-cutoff: OBS2_MIN_AI ≤ OD2_BETA → この AI 手は既存ベスト超えられない
+LD   A,(OD2_BETA)
+OR   A
+JR   Z,OD2_NO_BETA   ; OD2_BETA=0 → disabled
+LD   B,A             ; B = OD2_BETA
+LD   A,(OBS2_MIN_AI)
+CP   B               ; OBS2_MIN_AI - OD2_BETA
+JR   C,OD2_END       ; < → cutoff
+JR   Z,OD2_END       ; = → cutoff
+OD2_NO_BETA:
+```
+
+#### コンスタント版 → フェーズ別への切り替え
+
+初期実装: `MOB_STABLE_MAX = 2016`（定数）
+フェーズ別改良: `D2_MOB_MAX` (16bit変数) を GAME_PHASE に基づき AIset 先頭で設定 → **1行変更のみ**
+
+```asm
+; GAME_PHASE 設定直後に追加
+LD   HL,2016
+LD   A,(GAME_PHASE)
+CP   1
+JR   NZ,AEV_SET_BETA_MAX
+LD   HL,1824           ; 中盤
+AEV_SET_BETA_MAX:
+LD   (D2_MOB_MAX),HL
+```
+
+---
+
+## MM2_AB_BCUT.ASM 実装完了 (2026-04-23)
+
+`MM2_AB_D3.ASM` をベースに `MM2_AB_BCUT.ASM` を作成し、OppBestScore_d2 β-cutoff を実装。
+
+### 変更内容
+
+| 箇所 | 内容 |
+|------|------|
+| ヘッダー | β-cutoff 説明・日付追加 |
+| EQU | `D2_MOB_MAX EQU 2016`（序盤基準の保守的最大値） |
+| RAM変数 | `AMM_POS_W`（POS_WEIGHTキャッシュ）・`OD2_BETA`（β閾値）追加 |
+| AIset pre-filter | `JP Z,AMM_NEXTCOL` 直後に挿入。POS_WEIGHT先読み→OD2_BETA計算→OD2_BETA>255ならAI手スキップ |
+| AIset POS_W参照 | 後段の12命令ルックアップを `LD A,(AMM_POS_W)` 1命令に置換（副次的な高速化） |
+| OppBestScore_d2 | `OBS2_MIN_AI` 更新直後にβ-cutoffチェック追加（OBS2_MIN_AI≤OD2_BETAでOD2_ENDへ） |
+
+### 実装詳細
+
+**AIset pre-filter（OD2_BETA計算）:**
+```
+OD2_BETA = AI_BEST_SCORE - AMM_POS_W - D2_MOB_MAX (16bit)
+  負 → OD2_BETA=0 (disabled)
+  >255 → この AI 手をスキップ (JP AMM_NEXTCOL)
+  1..255 → OD2_BETA に保存
+```
+
+**OppBestScore_d2 β-cutoffチェック（OBS2_MIN_AI更新直後）:**
+```asm
+LD   A,(OD2_BETA)
+OR   A
+JR   Z,OD2_RESTORE   ; disabled
+LD   B,A
+LD   A,(OBS2_MIN_AI)
+CP   B
+JR   C,OD2_END       ; < → cutoff
+JR   Z,OD2_END       ; = → cutoff
+```
+
+### ファイル系譜
+
+```
+MM2_AB_D3.ASM  ← 大会用確定版
+  └─ MM2_AB_BCUT.ASM  ← β-cutoff実装（アセンブル・実機確認待ち）
+```
+
+### アセンブル確認 (2026-04-23)
+
+アセンブル通過確認済み。①（pre-filter）②（OppBestScore_d2内チェック）とも実装済み。
+
+### 実機動作確認 (2026-04-23)
+
+- 先手・後手ともに正常にゲーム終了を確認 ✓
+- **D3_THRESHOLD=25 のまま**: depth-3 に移行した局面で 5〜6秒かかる場面あり
+
+### 考察・次の方針
+
+D2 β-cutoff 実装後も、depth-3 パス（OppBestScore_d3）の処理時間が長い局面が存在する。
+D3_THRESHOLD を 30 に上げるには **OppBestScore_d3 側の β-cutoff** が必要。
+
+### 次のTODO
+
+1. **OppBestScore_d3 β-cutoff 実装** → `MM2_AB_BCUT.ASM` に追加（or 新ファイル）
+2. 実機で処理時間計測・D3_THRESHOLD 調整
+3. 問題なければフェーズ別 D2_MOB_MAX（1行変更）で追加改善
+
+---
+
+## 5/3凍結・5/9大会 ロードマップ (2026-04-24)
+
+大会: 2026-05-09 / 機能凍結: 2026-05-03 / 予備: 2026-05-05
+
+| 期間 | 作業 | 備考 |
+|------|------|------|
+| 4/24〜4/25 | OppBestScore_d3 β-cutoff 実装・実機確認 | 速度改善の最優先 |
+| 4/26 | D3_THRESHOLD 調整・実機計測（25→30以上を狙う） | β-cutoff効果を確認 |
+| 4/27 | 評価値表示（Z80 SIOA出力＋Pico表示） | 表示フォーマットは実装時に決定 |
+| 4/28〜4/29 | EPROM（27C256）単独起動動作確認 + 投了/中断処理（Z80+Pico） | 来週前半 |
+| 4/30〜5/1 | Pico棋譜記録・過去盤面ログ保存機能 | 来週後半 |
+| 5/2 | GA再最適化（depth-3で夜間学習）・終盤完全読み復活（余裕次第） | — |
+| 5/3 | **全機能凍結・最終動作確認** | 以降は設定調整のみ |
+
+### 新規追加項目（来週中に実施）
+
+#### EPROM（27C256）単独起動動作確認
+- MM2_AB_D3.ASM（またはBCUT版）を27C256に焼いてモニタROMと差し替え
+- 電源ON直後からオセロが起動することを確認
+- InitSIOA / PIOA / PIOB 初期化が正しく機能するか確認
+
+#### 投了/中断処理（Z80側）
+- ゲーム中にスイッチ（SW4 等）入力で中断
+- SIOA にも中断コマンド（例: 'q' 以外のキー）を用意
+- 中断後は初期画面（先後手選択）に戻る
+- Pico側も中断を受け取りLCD表示をリセット
+
+#### Pico棋譜記録・過去盤面ログ
+- 対局中の全着手をPicoのフラッシュ（LittleFS）に記録
+- 盤面スナップショット（各ターン後の64マス状態）もログに残す
+- 既存の `replay_log('/replay.txt')` 機能と連携させる方向で検討
+
+---
+
+## OppBestScore_d3 β-cutoff 実装 (2026-04-24)
+
+`MM2_AB_BCUT.ASM` に OppBestScore_d3 の β-cutoff を追加。同時に OppBestScore_d2 の潜在的なスタックバグも修正。
+
+### 変更内容
+
+#### OppBestScore_d3 β-cutoff（新規）
+
+`AiBestScore_d3` 呼び出し後、`OBS2_MIN_AI` を更新した直後に挿入:
+
+```asm
+        ; β-cutoff: OBS2_MIN_AI <= OD2_BETA → AIset はこの AI 手を採用しない
+        LD   A,(OD2_BETA)
+        OR   A
+        JR   Z,OD3_RESTORE   ; OD2_BETA=0 → disabled
+        LD   B,A             ; B = OD2_BETA
+        LD   A,(OBS2_MIN_AI)
+        CP   B               ; OBS2_MIN_AI - OD2_BETA
+        JR   C,OD3_BCUT      ; OBS2_MIN_AI < OD2_BETA → β-cutoff
+        JR   Z,OD3_BCUT      ; OBS2_MIN_AI = OD2_BETA → β-cutoff
+
+OD3_BCUT:
+        LD   HL,BOARD_SAVE2
+        CALL RestoreBoard    ; ← 先にボード復元
+        POP  BC              ; ← スタック整合
+        JP   OD3_END
+```
+
+`OD2_BETA` は AIset の pre-filter で計算済みのため d2/d3 で共有。
+
+#### OppBestScore_d2 スタックバグ修正
+
+**バグの内容:** β-cutoff 発火時に `JR C/Z, OD2_END` で直接 OD2_END へジャンプしていたが、
+このパスでは `SaveBoard/ApplyMove` 前の `PUSH BC` に対する `POP BC` がスキップされ、
+スタックが1段ずれた状態で `RET` が実行されるためクラッシュの可能性があった。
+
+**実際の影響:** `OD2_BETA > 0` になるには `AI_BEST_SCORE > AMM_POS_W + 2016` が必要で、
+実用的な mm_score の範囲内では発火しにくく、テストでは問題が表面化しなかった。
+
+**修正:** `JR C/Z, OD2_END` を `JR C/Z, OD2_BCUT` に変更し、`OD2_BCUT` で
+`RestoreBoard + POP BC` を実行してから `JP OD2_END` する安全なパスを追加。
+
+```asm
+OD2_BCUT:
+        LD   HL,BOARD_SAVE2
+        CALL RestoreBoard
+        POP  BC
+        JP   OD2_END
+```
+
+### 期待効果
+
+depth-3 パス（空き < 25）で OPP が十分悪い応手を見つけた時点で OPP 外ループを
+打ち切れるため、5〜6秒かかっていた局面が短縮される見込み。
+
+### 次のTODO
+
+1. **アセンブル・実機確認**（先手・後手ともに正常動作を確認）
+2. **処理時間計測**（PIOA D7 → Pico 計測、D3_THRESHOLD=25 で改善幅を確認）
+3. **D3_THRESHOLD 調整**（25 → 30 以上を狙う）
