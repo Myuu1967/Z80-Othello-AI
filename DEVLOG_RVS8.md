@@ -2171,3 +2171,42 @@ leading zero は B フラグ（0=抑制, FFH=出力済み）で管理。一の�
 
 実機テストで評価値表示と処理時間を確認。
 Pico 側（gameDisplay.py）への評価値表示対応。
+
+---
+
+## RFCT003.ASM 実機テスト・追加実装 (2026-04-25)
+
+### 評価値表示確認
+
+- TeraTerm: `Eval:XXXX` が毎ターン表示される（2手目で約 1000）
+- Pico LCD: 5行目に `Eval:XXXX` が表示、人間の手でも消えないことを確認
+- gameDisplay.py の `row_idx==0` 受信時に `eval_text` をクリアしていたバグを修正（盤面更新ごとに消える問題）
+
+### 対局中断機能追加（PB5 / SW5）
+
+PB5 (PIOB bit5) の H→L で対局を中断し、リトライ画面に戻る機能を追加。
+
+**Z80 (RFCT003.ASM) 変更点:**
+
+| 変更箇所 | 内容 |
+|---|---|
+| `SW_ABORT EQU 20H` | PB5 ビット定数追加 |
+| `MSG_ABORT` | `"Game aborted.\r\n"` メッセージ追加 |
+| `WaitSwPress` | `AND 1FH` → `AND 3FH`（PB5 を検出対象に） |
+| `SWP_LOOP` | WaitSwPress 直後に `BIT 5,E; JP NZ,GAME_ABORTED` 追加 |
+| `MAIN_LOOP` 先頭 | ターン間の PB5 チェック（デバウンス付き）追加 |
+| `GAME_ABORTED:` | `LD SP,0FFF0H`（スタッククリア）→ MSG_ABORT → `JP GO_ASK` |
+
+AI 計算中は割り込み不可（タイトループのため）。AI 手番が終わった後に検出される。
+
+**Pico (gameDisplay.py) 変更点:**
+
+- `"Game aborted."` 受信時: `move_text="ABORTED"`, `retry_mode=True`, `eval_text=""` → LCD リトライ画面へ
+
+**動作確認:**
+
+- PB5 押下で PC・Pico 両方にリトライメッセージが表示されることを確認
+
+### 次ステップ
+
+AI の弱さ改善（Python 側での評価関数チューニング → Z80 移植）または終盤完全読み (AIset_EG) のフリーズ原因調査。

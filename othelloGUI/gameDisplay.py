@@ -237,6 +237,13 @@ def process_line(line):
         human_text = ""
         draw_status()
 
+    elif line == 'Game aborted.':
+        move_text  = "ABORTED"
+        human_text = ""
+        eval_text  = ""
+        retry_mode = True
+        draw_status()
+
     elif 'wins' in line or line in ('DRAW', 'Draw'):
         if 'BLACK' in line:
             human_text   = "BLACK wins"

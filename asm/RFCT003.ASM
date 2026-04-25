@@ -88,6 +88,7 @@ SW_RIGHT        EQU 02H     ; SW1 PB1 : 右
 SW_UP           EQU 04H     ; SW2 PB2 : 上
 SW_DOWN         EQU 08H     ; SW3 PB3 : 下
 SW_ENTER        EQU 10H     ; SW4 PB4 : 確定
+SW_ABORT        EQU 20H     ; SW5 PB5 : 中断
 
 ; =========================================================
 ; ASCII / control chars
@@ -172,6 +173,7 @@ MSG_RETRYQ:     DEFM CR,LF,"r:Retry or q:Quit ? ",0
 MSG_BYE:        DEFM CR,LF,"Bye.",CR,LF,0
 
 MSG_PASSEND:    DEFM CR,LF,"Game ended by consecutive passes.",CR,LF,0
+MSG_ABORT:      DEFM CR,LF,"Game aborted.",CR,LF,0
 
 ; =========================================================
 ; Tables
@@ -382,6 +384,17 @@ START:
         CALL DecideFirstTurn
 
 MAIN_LOOP:
+        ; PB5 中断チェック (ターン間)
+        IN   A,(PIOB_DATA)
+        CPL
+        BIT  5,A
+        JR   Z,ML_NO_ABORT
+        CALL Debounce
+        IN   A,(PIOB_DATA)
+        CPL
+        BIT  5,A
+        JP   NZ,GAME_ABORTED
+ML_NO_ABORT:
         CALL DoTurn
         OR   A
         JP   NZ,GameOver        ; A=1 => end by consecutive passes
@@ -394,6 +407,16 @@ MAIN_LOOP:
         JP   NZ,GameOver
 
         JP   MAIN_LOOP
+
+
+; =========================================================
+; Game aborted (PB5 押下による中断)
+; =========================================================
+GAME_ABORTED:
+        LD   SP,0FFF0H          ; 積みっぱなしの戻りアドレスをクリア
+        LD   DE,MSG_ABORT
+        CALL PrintString
+        JP   GO_ASK
 
 
 ; =========================================================
@@ -745,7 +768,7 @@ WaitSwPress:
 WSP_WAIT:
         IN   A,(PIOB_DATA)
         CPL
-        AND  1FH
+        AND  3FH             ; SW0-SW5 (PB5=中断含む)
         JR   Z,WSP_WAIT
 
         PUSH AF
@@ -753,7 +776,7 @@ WSP_WAIT:
         POP  AF
         IN   A,(PIOB_DATA)
         CPL
-        AND  1FH
+        AND  3FH
         JR   Z,WSP_WAIT
 
         PUSH AF
@@ -761,7 +784,7 @@ WSP_RELEASE:
         CALL Debounce
         IN   A,(PIOB_DATA)
         CPL
-        AND  1FH
+        AND  3FH
         JR   NZ,WSP_RELEASE
         POP  AF
         RET
@@ -793,6 +816,9 @@ SWP_REPRINT:
 SWP_LOOP:
         CALL WaitSwPress
         LD   E,A
+
+        BIT  5,E             ; PB5 中断?
+        JP   NZ,GAME_ABORTED
 
         BIT  4,E
         JR   NZ,SWP_ENTER
