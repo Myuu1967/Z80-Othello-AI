@@ -205,7 +205,6 @@ def process_line(line):
             retry_mode   = False
             winner_stone = None
             human_text   = ""
-            eval_text    = ""
 
     elif line.startswith('X:') and 'O:' in line:
         score_text = line
