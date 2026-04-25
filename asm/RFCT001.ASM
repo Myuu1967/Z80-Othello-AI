@@ -1,6 +1,6 @@
 ; =========================================================
 ; Super AKI-80 8x8 Othello  [Minimax depth-3 + Alpha-Beta + Move Ordering + Evaluation]
-;                            [OppBestScore_d2 β-cutoff (pre-filter + inner exit)]
+;                            [Ply2Best_D2 β-cutoff (pre-filter + inner exit)]
 ;                            [Player input: PIOB switch SW0-SW4]
 ; ---------------------------------------------------------
 ; Target : Z80 (Super AKI-80)
@@ -15,9 +15,9 @@
 ;   - Player input: PIOB SW0-SW4
 ;   - AI move: Minimax depth-3  [Alpha-Beta pruning + 16bit eval + Mobility]
 ;       ply1: AIset           AI着手   (BOARD_SAVE1)
-;       ply2: OppBestScore_d3 OPP着手  (BOARD_SAVE2)
-;       ply3: AiBestScore_d3  AI着手   (BOARD_SAVE3)
-;       leaf: ID3_LOOP        OPP手をPOS_WEIGHT+flipsで推定
+;       ply2: Ply2Best_D3 OPP着手  (BOARD_SAVE2)
+;       ply3: Ply3Best  AI着手   (BOARD_SAVE3)
+;       leaf: LeafEval        OPP手をPOS_WEIGHT+flipsで推定
 ;   - EndGame perfect read: empty <= ENDGAME_THRESHOLD -> SearchFull (negamax)
 ;       BOARD_EG_SAVES: depth 2..9 用 (8スロット x 64B = 512B)
 ;   - Legal check + flipping (ApplyMove)
@@ -33,31 +33,33 @@
 ;   initial AI_BEST_SCORE = 0000H -> first legal move always updates
 ;
 ; α-β 枝刈り構造:
-;   ID3_LOOP (leaf OPP): OBS3_BEST >= D3_AI_ALPHA → α-cutoff
-;   AiBestScore_d3:      D3_AI_BEST >= D3_OPP_MIN → β-cutoff
-;   OppBestScore_d3:     OBS2_MIN_AI <= OD2_BETA (d2と共有) → β-cutoff [NEW]
-;     inner exit:       OBS2_MIN_AI <= OD2_BETA → OPP外ループ早期終了
-;   OppBestScore_d2:     OD2_BETA pre-filter + inner β-cutoff
-;     条件: POS_W + OBS2_MIN_AI + D2_MOB_MAX <= AI_BEST_SCORE
-;     AIset pre-filter: OD2_BETA>255 → AI手スキップ
-;     inner exit:       OBS2_MIN_AI <= OD2_BETA → OPP外ループ早期終了
+;   LeafEval (leaf OPP): LF_BEST >= LF_ALPHA → α-cutoff
+;   Ply3Best:      P3_BEST >= D3_OPP_MIN → β-cutoff
+;   Ply2Best_D3:     P2_ALPHA <= P1_BETA (d2と共有) → β-cutoff [NEW]
+;     inner exit:       P2_ALPHA <= P1_BETA → OPP外ループ早期終了
+;   Ply2Best_D2:     P1_BETA pre-filter + inner β-cutoff
+;     条件: POS_W + P2_ALPHA + MOB_STABLE_CAP_phase <= AI_BEST_SCORE
+;     AIset pre-filter: P1_BETA>255 → AI手スキップ
+;     inner exit:       P2_ALPHA <= P1_BETA → OPP外ループ早期終了
 ;
 ; EndGame 完全読み (SearchFull):
 ;   negamax で全読み。スコア = AI石数 - 相手石数 (符号付き -64..+64)
 ;
-; vs MM2_AB_EV: BOARD_SAVE3 / AiBestScore_d3 / OppBestScore_d3 / ID3_LOOP を追加。
-;               OppBestScore_d2 → OppBestScore_d3 に置換。
+; vs MM2_AB_EV: BOARD_SAVE3 / Ply3Best / Ply2Best_D3 / LeafEval を追加。
+;               Ply2Best_D2 → Ply2Best_D3 に置換。
 ;
 ; Apr 8th,  2026 時間計測の処理を加えた
 ; Apr 9th,  2026 プレイヤー入力を PIOB スイッチ(SW0-SW4)に変更 -> RVS8_PIOSW.ASM
 ; Apr 11th, 2026 SaveBoard 2スロット化 (HL param)、depth-2準備 -> RVS8_MM2_AB.ASM
-; Apr 14th, 2026 α-β 枝刈り実装 (ID2_END α-cutoff in OppBestScore_d2)
+; Apr 14th, 2026 α-β 枝刈り実装 (P2I_END α-cutoff in Ply2Best_D2)
 ; Apr 15th, 2026 EndGame完全読み追加 (SearchFull negamax) -> MM2_AB_EG.ASM
 ; Apr 20th, 2026 ムーブオーダリング追加 (POS_ORDER テーブル) -> MM2_AB_MO.ASM
 ; Apr 20th, 2026 評価関数強化 Step1-4 -> MM2_AB_EV.ASM
 ; Apr 21st, 2026 depth-3 実装 -> MM2_AB_D3.ASM
-; Apr 23rd, 2026 OppBestScore_d2 β-cutoff 実装 -> MM2_AB_BCUT.ASM
-; Apr 24th, 2026 OppBestScore_d3 β-cutoff 実装 (OD2_BETA共有) + OD2スタックバグ修正
+; Apr 23rd, 2026 Ply2Best_D2 β-cutoff 実装 -> MM2_AB_BCUT.ASM
+; Apr 24th, 2026 Ply2Best_D3 β-cutoff 実装 (P1_BETA共有) + OD2スタックバグ修正
+; Apr 25th, 2026 RFCT000: 変数名・ラベル名・関数名リネーム + OppBestScore(depth-1)削除
+; Apr 25th, 2026 RFCT001: MOB_STABLE_CAP をフェーズ別3定数に分割 + OBS_SCORE_MAX 追加
 ; =========================================================
 
         ORG 8000H
@@ -121,10 +123,12 @@ MID_GAME    EQU 12          ; 空き >= 12: 中盤、else: 終盤
 ; depth切り替え閾値
 D3_THRESHOLD EQU 25         ; 空き < 25 → depth-3 / 空き >= 25 → depth-2
 
-; OppBestScore_d2 β-cutoff: mob+stable 最大値 (depth-2 = 序盤/中盤のみ)
-;   序盤(×12/×30): 128×12+16×30 = 1536+480 = 2016
-;   中盤(×8/×50):  128×8+16×50  = 1024+800 = 1824
-D2_MOB_MAX EQU 1600         ; 中盤以降の実際の上限値 (depth-3有効局面基準)
+; Ply2Best β-cutoff: mob+stable 最大値 (フェーズ別)
+;   mob_diff+64 max ≈ 96 (AI約32手 OPP=0), stable_diff+8 max ≈ 24 (AI=16石 OPP=0)
+MOB_STABLE_CAP_EARLY EQU 1872   ; 96×12 + 24×30 (序盤: mob_w=12, stable_w=30)
+MOB_STABLE_CAP_MID   EQU 1968   ; 96×8  + 24×50 (中盤: mob_w=8,  stable_w=50)
+MOB_STABLE_CAP_LATE  EQU 1104   ; 96×4  + 24×30 (終盤: mob_w=4,  stable_w=30)
+OBS_SCORE_MAX        EQU  192   ; POS_WEIGHT_MAX(128) + FLIPS_MAX(64)
 
 
 ; =========================================================
@@ -266,8 +270,8 @@ BOARD_INIT:
 ; ---------------------------------------------------------
 ; BOARD_SAVE1/2/3  minimax用 盤面バックアップ (各64バイト)
 ;   BOARD_SAVE1: ply1 AIset 外ループ用
-;   BOARD_SAVE2: ply2 OppBestScore_d3 外ループ用
-;   BOARD_SAVE3: ply3 AiBestScore_d3 ループ用  ← depth-3 新規
+;   BOARD_SAVE2: ply2 Ply2Best_D3 外ループ用
+;   BOARD_SAVE3: ply3 Ply3Best ループ用  ← depth-3 新規
 ; ---------------------------------------------------------
 BOARD_SAVE1:
         DEFS BOARD_BYTES
@@ -319,12 +323,12 @@ AI_BEST_ROW:    DEFB 0
 AI_BEST_COL:    DEFB 0
 AI_BEST_SCORE:  DEFW 0          ; mm_score 16bit (高いほどAI有利)
 
-OBS_BEST:       DEFB 0          ; OppBestScore 内部作業用 (8bit: max=184)
-OBS_COUNT:      DEFB 0          ; OppBestScore: 相手合法手数
-OBS2_MIN_AI:    DEFB 0          ; OppBestScore_d2: AI最善スコアの最小値
+P2_INNER_BEST:       DEFB 0          ; Ply2Best_D2 内部作業用 (8bit: max=184)
+OBS_COUNT:      DEFB 0          ; Ply2Best_D2/D3: 相手合法手数
+P2_ALPHA:    DEFB 0          ; Ply2Best_D2: AI最善スコアの最小値
 AI_MOB_COUNT:   DEFB 0          ; CountMobility: AI合法手数
-AMM_POS_W:      DEFB 0          ; AIset: POS_WEIGHT[ai_pos] キャッシュ (β-cutoff用)
-OD2_BETA:       DEFB 0          ; OppBestScore_d2: β-cutoff閾値 (0=disabled)
+P1_POS_W:      DEFB 0          ; AIset: POS_WEIGHT[ai_pos] キャッシュ (β-cutoff用)
+P1_BETA:       DEFB 0          ; Ply2Best_D2: β-cutoff閾値 (0=disabled)
 
 ; ---- CountStable work area ----
 CS_SIDE:        DEFB 0          ; CountStable: 対象サイド
@@ -341,15 +345,15 @@ EMPTY_CACHE:    DEFB 0      ; AIset先頭でCountEmptyの結果を保存
 USE_DEPTH3:     DEFB 0      ; 0=depth-2 / 1=depth-3 (AIset先頭で設定)
 
 ; ---- ムーブオーダリング用ループインデックス ----
-AMM_IDX:        DEFB 0          ; AIset 外ループ POS_ORDER インデックス
-OD2_IDX:        DEFB 0          ; OppBestScore_d3 外ループ (ply2 OPP)
-ID2_IDX:        DEFB 0          ; AiBestScore_d3 ループ (ply3 AI)
-LD3_IDX:        DEFB 0          ; ID3_LOOP インデックス (leaf OPP)
+P1_IDX:        DEFB 0          ; AIset 外ループ POS_ORDER インデックス
+P2_IDX:        DEFB 0          ; Ply2Best_D3 外ループ (ply2 OPP)
+P3_IDX:        DEFB 0          ; Ply3Best ループ (ply3 AI)
+LF_IDX:        DEFB 0          ; LeafEval インデックス (leaf OPP)
 
 ; ---- depth-3 AI work ----
-D3_AI_BEST:     DEFB 0          ; AiBestScore_d3: AI 最善スコア作業用
-D3_AI_ALPHA:    DEFB 0          ; ID3_LOOP cutoff: 255 - D3_AI_BEST (呼び出し元が設定)
-OBS3_BEST:      DEFB 0          ; ID3_LOOP: leaf OPP 最善スコア作業用
+P3_BEST:     DEFB 0          ; Ply3Best: AI 最善スコア作業用
+LF_ALPHA:    DEFB 0          ; LeafEval cutoff: 255 - P3_BEST (呼び出し元が設定)
+LF_BEST:      DEFB 0          ; LeafEval: leaf OPP 最善スコア作業用
 
 ; ---- EndGame 完全読み用 ----
 EG_DEPTH:       DEFB 0          ; SearchFull 再帰深さ (0-based)
@@ -1076,94 +1080,26 @@ CAF_Fail:
 
 
 ; [AICORE] 通常探索 (Minimax depth-2 + α-β) ---------------
-; ---------------------------------------------------------
-; OppBestScore  [depth-1版: 盤面非破壊]
-; Input:  D = opponent side
-; Output: A = opp_best / OBS_COUNT = 相手合法手数
-; Destroys: AF,BC,DE,HL
-; ---------------------------------------------------------
-OppBestScore:
-        XOR  A
-        LD   (OBS_BEST),A
-        LD   (OBS_COUNT),A
-
-        LD   B,0
-OBS_ROW:
-        LD   C,0
-OBS_COL:
-        PUSH BC
-        PUSH DE
-        CALL CountAllFlips
-        POP  DE
-        POP  BC
-
-        OR   A
-        JR   Z,OBS_NEXTCOL
-
-        PUSH AF
-        LD   HL,OBS_COUNT
-        INC  (HL)
-        POP  AF
-
-        LD   E,A
-
-        PUSH BC
-        LD   A,B
-        SLA  A
-        SLA  A
-        SLA  A
-        ADD  A,C
-        LD   C,A
-        LD   B,0
-        LD   HL,POS_WEIGHT
-        ADD  HL,BC
-        LD   A,(HL)
-        ADD  A,E
-        POP  BC
-
-        LD   E,A
-        LD   A,(OBS_BEST)
-        CP   E
-        JR   NC,OBS_NEXTCOL
-
-        LD   A,E
-        LD   (OBS_BEST),A
-
-OBS_NEXTCOL:
-        INC  C
-        LD   A,C
-        CP   8
-        JR   C,OBS_COL
-
-        INC  B
-        LD   A,B
-        CP   8
-        JR   C,OBS_ROW
-
-OBS_END:
-        LD   A,(OBS_BEST)
-        RET
-
 
 ; ---------------------------------------------------------
-; OppBestScore_d2  [depth-2版 + α-β枝刈り]
+; Ply2Best_D2  [depth-2版 + α-β枝刈り]
 ; Input:  D = opponent side (= HumSide)
 ; Output: A = opp_best / OBS_COUNT = 相手合法手数
 ; Destroys: AF,BC,DE,HL
 ; ---------------------------------------------------------
-OppBestScore_d2:
+Ply2Best_D2:
         XOR  A
         LD   (OBS_COUNT),A
         LD   A,0FFH
-        LD   (OBS2_MIN_AI),A
+        LD   (P2_ALPHA),A
 
         XOR  A
-        LD   (OD2_IDX),A
+        LD   (P2_IDX),A
 
-OD2_LOOP:
-        LD   A,(OD2_IDX)
+P2_LOOP:
+        LD   A,(P2_IDX)
         CP   64
-        JP   NC,OD2_END
+        JP   NC,P2_END
         LD   HL,POS_ORDER
         LD   C,A
         LD   B,0
@@ -1188,7 +1124,7 @@ OD2_LOOP:
         POP  BC
 
         OR   A
-        JP   Z,OD2_NEXTCOL
+        JP   Z,P2_NEXT
 
         LD   HL,OBS_COUNT
         INC  (HL)
@@ -1201,15 +1137,15 @@ OD2_LOOP:
         CALL ApplyMove
 
         XOR  A
-        LD   (OBS_BEST),A
+        LD   (P2_INNER_BEST),A
 
         XOR  A
-        LD   (ID2_IDX),A
+        LD   (P3_IDX),A
 
-ID2_LOOP:
-        LD   A,(ID2_IDX)
+P2I_LOOP:
+        LD   A,(P3_IDX)
         CP   64
-        JP   NC,ID2_END
+        JP   NC,P2I_END
         LD   HL,POS_ORDER
         LD   C,A
         LD   B,0
@@ -1234,7 +1170,7 @@ ID2_LOOP:
         POP  BC
 
         OR   A
-        JR   Z,ID2_NEXT
+        JR   Z,P2I_NEXT
 
         LD   E,A
         PUSH BC
@@ -1251,104 +1187,104 @@ ID2_LOOP:
         ADD  A,E
         POP  BC
 
-        LD   HL,OBS_BEST
+        LD   HL,P2_INNER_BEST
         CP   (HL)
-        JR   C,ID2_NEXT
-        JR   Z,ID2_NEXT
+        JR   C,P2I_NEXT
+        JR   Z,P2I_NEXT
         LD   (HL),A
-        ; α-cutoff: OBS_BEST >= OBS2_MIN_AI → 枝刈り
-        LD   HL,OBS2_MIN_AI
+        ; α-cutoff: P2_INNER_BEST >= P2_ALPHA → 枝刈り
+        LD   HL,P2_ALPHA
         CP   (HL)
-        JR   NC,ID2_END
+        JR   NC,P2I_END
 
-ID2_NEXT:
-        LD   A,(ID2_IDX)
+P2I_NEXT:
+        LD   A,(P3_IDX)
         INC  A
-        LD   (ID2_IDX),A
-        JP   ID2_LOOP
+        LD   (P3_IDX),A
+        JP   P2I_LOOP
 
-ID2_END:
-        LD   A,(OBS_BEST)
-        LD   HL,OBS2_MIN_AI
+P2I_END:
+        LD   A,(P2_INNER_BEST)
+        LD   HL,P2_ALPHA
         CP   (HL)
-        JR   NC,OD2_RESTORE
-        LD   (HL),A          ; OBS2_MIN_AI 更新 (A = 新しい最小値)
+        JR   NC,P2_RESTORE
+        LD   (HL),A          ; P2_ALPHA 更新 (A = 新しい最小値)
 
-        ; β-cutoff: OBS2_MIN_AI <= OD2_BETA → AIset はこの AI 手を採用しない
-        LD   A,(OD2_BETA)
+        ; β-cutoff: P2_ALPHA <= P1_BETA → AIset はこの AI 手を採用しない
+        LD   A,(P1_BETA)
         OR   A
-        JR   Z,OD2_RESTORE   ; OD2_BETA=0 → disabled
-        LD   B,A             ; B = OD2_BETA
-        LD   A,(OBS2_MIN_AI)
-        CP   B               ; A(OBS2_MIN_AI) - B(OD2_BETA)
-        JR   C,OD2_BCUT      ; OBS2_MIN_AI < OD2_BETA → β-cutoff
-        JR   Z,OD2_BCUT      ; OBS2_MIN_AI = OD2_BETA → β-cutoff
-        ; OBS2_MIN_AI > OD2_BETA → 続行 (fall through)
+        JR   Z,P2_RESTORE   ; P1_BETA=0 → disabled
+        LD   B,A             ; B = P1_BETA
+        LD   A,(P2_ALPHA)
+        CP   B               ; A(P2_ALPHA) - B(P1_BETA)
+        JR   C,P2_BCUT      ; P2_ALPHA < P1_BETA → β-cutoff
+        JR   Z,P2_BCUT      ; P2_ALPHA = P1_BETA → β-cutoff
+        ; P2_ALPHA > P1_BETA → 続行 (fall through)
 
-OD2_RESTORE:
+P2_RESTORE:
         LD   HL,BOARD_SAVE2
         CALL RestoreBoard
         POP  BC
 
-OD2_NEXTCOL:
-        LD   A,(OD2_IDX)
+P2_NEXT:
+        LD   A,(P2_IDX)
         INC  A
-        LD   (OD2_IDX),A
-        JP   OD2_LOOP
+        LD   (P2_IDX),A
+        JP   P2_LOOP
 
-OD2_BCUT:
+P2_BCUT:
         ; β-cutoff: RestoreBoard + POP BC してから外ループ終了
         LD   HL,BOARD_SAVE2
         CALL RestoreBoard
         POP  BC
-        JP   OD2_END
+        JP   P2_END
 
-OD2_END:
+P2_END:
         LD   A,(OBS_COUNT)
         OR   A
-        JR   NZ,OD2_RETURN
+        JR   NZ,P2_RETURN
         XOR  A
         RET
 
-OD2_RETURN:
+P2_RETURN:
         LD   A,0FFH
-        LD   HL,OBS2_MIN_AI
+        LD   HL,P2_ALPHA
         SUB  (HL)
         RET
 
 
 ; ---------------------------------------------------------
-; OppBestScore_d3  [depth-3版 + α-β枝刈り + β-cutoff]
+; Ply2Best_D3  [depth-3版 + α-β枝刈り + β-cutoff]
 ;
 ;   各OPP手について:
 ;     1. SaveBoard(BOARD_SAVE2) + ApplyMove(OPP)
-;     2. AiBestScore_d3 → D3_AI_BEST = AIのply3最善スコア
-;     3. OBS2_MIN_AI = min(OBS2_MIN_AI, D3_AI_BEST)
-;        ※ D3_AI_BEST >= OBS2_MIN_AI なら更新不要(OPPに既より良い手あり)
-;     4. β-cutoff: OBS2_MIN_AI <= OD2_BETA → OD3_END (早期脱出)
-;        OD2_BETA は AIset の pre-filter で計算済み(d2と共有)
+;     2. Ply3Best → P3_BEST = AIのply3最善スコア
+;     3. P2_ALPHA = min(P2_ALPHA, P3_BEST)
+;        ※ P3_BEST >= P2_ALPHA なら更新不要(OPPに既より良い手あり)
+;     4. β-cutoff: P2_ALPHA <= P1_BETA → P2D3_END (早期脱出)
+;        P1_BETA は AIset の pre-filter で計算済み(d2と共有)
 ;     5. RestoreBoard(BOARD_SAVE2)
 ;
-;   AiBestScore_d3内でβ-cutoff実施済み (D3_AI_BEST >= OBS2_MIN_AI → 早期終了)
+;   Ply3Best内でβ-cutoff実施済み (P3_BEST >= P2_ALPHA → 早期終了)
 ;
 ; Input:  D = opponent side (= HumSide)
-; Output: A = opp_best (=255-OBS2_MIN_AI) / OBS_COUNT = 相手合法手数
+; Output: A = opp_best (=255-P2_ALPHA) / OBS_COUNT = 相手合法手数
 ; Destroys: AF,BC,DE,HL
 ; ---------------------------------------------------------
-OppBestScore_d3:
+Ply2Best_D3:
         XOR  A
         LD   (OBS_COUNT),A
         LD   A,0FFH
-        LD   (OBS2_MIN_AI),A
+        LD   (P2_ALPHA),A
 
         XOR  A
-        LD   (OD2_IDX),A
+        LD   (P2_IDX),A
 
-OD3_LOOP:
-        ; POS_ORDER[OD2_IDX] からマスoffsetを取得 → B=row, C=col
-        LD   A,(OD2_IDX)
+P2D3_LOOP:
+        ; POS_ORDER[P2_IDX] からマスoffsetを取得 → B=row, C=col
+        LD   A,(P2_IDX)
         CP   64
-        JP   NC,OD3_END
+        JP   NC,P2D3_END
         LD   HL,POS_ORDER
         LD   C,A
         LD   B,0
@@ -1373,7 +1309,7 @@ OD3_LOOP:
         POP  BC
 
         OR   A
-        JP   Z,OD3_NEXTCOL
+        JP   Z,P2D3_NEXT
 
         LD   HL,OBS_COUNT
         INC  (HL)
@@ -1385,85 +1321,85 @@ OD3_LOOP:
         LD   D,A
         CALL ApplyMove
 
-        CALL AiBestScore_d3  ; D3_AI_BEST = AIのply3最善スコア
+        CALL Ply3Best  ; P3_BEST = AIのply3最善スコア
 
-        ; OBS2_MIN_AI = min(OBS2_MIN_AI, D3_AI_BEST)
-        LD   A,(D3_AI_BEST)
-        LD   HL,OBS2_MIN_AI
+        ; P2_ALPHA = min(P2_ALPHA, P3_BEST)
+        LD   A,(P3_BEST)
+        LD   HL,P2_ALPHA
         CP   (HL)
-        JR   NC,OD3_RESTORE  ; D3_AI_BEST >= OBS2_MIN_AI → 更新不要
+        JR   NC,P2D3_RESTORE  ; P3_BEST >= P2_ALPHA → 更新不要
         LD   (HL),A          ; 新しい最小値を記録
 
-        ; β-cutoff: OBS2_MIN_AI <= OD2_BETA → AIset はこの AI 手を採用しない
-        LD   A,(OD2_BETA)
+        ; β-cutoff: P2_ALPHA <= P1_BETA → AIset はこの AI 手を採用しない
+        LD   A,(P1_BETA)
         OR   A
-        JR   Z,OD3_RESTORE   ; OD2_BETA=0 → disabled
-        LD   B,A             ; B = OD2_BETA
-        LD   A,(OBS2_MIN_AI)
-        CP   B               ; OBS2_MIN_AI - OD2_BETA
-        JR   C,OD3_BCUT      ; OBS2_MIN_AI < OD2_BETA → β-cutoff
-        JR   Z,OD3_BCUT      ; OBS2_MIN_AI = OD2_BETA → β-cutoff
-                             ; OBS2_MIN_AI > OD2_BETA → 続行 (fall through)
+        JR   Z,P2D3_RESTORE   ; P1_BETA=0 → disabled
+        LD   B,A             ; B = P1_BETA
+        LD   A,(P2_ALPHA)
+        CP   B               ; P2_ALPHA - P1_BETA
+        JR   C,P2D3_BCUT      ; P2_ALPHA < P1_BETA → β-cutoff
+        JR   Z,P2D3_BCUT      ; P2_ALPHA = P1_BETA → β-cutoff
+                             ; P2_ALPHA > P1_BETA → 続行 (fall through)
 
-OD3_RESTORE:
+P2D3_RESTORE:
         LD   HL,BOARD_SAVE2
         CALL RestoreBoard
         POP  BC
 
-OD3_NEXTCOL:
-        LD   A,(OD2_IDX)
+P2D3_NEXT:
+        LD   A,(P2_IDX)
         INC  A
-        LD   (OD2_IDX),A
-        JP   OD3_LOOP
+        LD   (P2_IDX),A
+        JP   P2D3_LOOP
 
-OD3_BCUT:
+P2D3_BCUT:
         ; β-cutoff: RestoreBoard + POP BC してから外ループ終了
         LD   HL,BOARD_SAVE2
         CALL RestoreBoard
         POP  BC
-        JP   OD3_END
+        JP   P2D3_END
 
-OD3_END:
+P2D3_END:
         LD   A,(OBS_COUNT)
         OR   A
-        JR   NZ,OD3_RETURN
+        JR   NZ,P2D3_RETURN
         XOR  A
         RET
 
-OD3_RETURN:
+P2D3_RETURN:
         LD   A,0FFH
-        LD   HL,OBS2_MIN_AI
+        LD   HL,P2_ALPHA
         SUB  (HL)
         RET
 
 
 ; ---------------------------------------------------------
-; ID3_LOOP  [depth-3 leaf: OPP視点 POS_WEIGHT+flips 評価]
+; LeafEval  [depth-3 leaf: OPP視点 POS_WEIGHT+flips 評価]
 ;
 ;   ply3(AI着手適用済み)の盤面でOPPが打てる各手を評価し、
-;   OPPの最善スコアを OBS3_BEST に格納して返す。
+;   OPPの最善スコアを LF_BEST に格納して返す。
 ;   スコア = POS_WEIGHT[opp_pos] + CountAllFlips(OPP, pos)
 ;
 ;   α-cutoff:
-;     OBS3_BEST >= D3_AI_ALPHA のとき打ち切る。
-;     D3_AI_ALPHA = 255 - D3_AI_BEST (AiBestScore_d3が呼び出し前に設定)
+;     LF_BEST >= LF_ALPHA のとき打ち切る。
+;     LF_ALPHA = 255 - P3_BEST (Ply3Bestが呼び出し前に設定)
 ;     意味: OPPが十分良い応手を見つけたらAIはこのply3手を選ばない。
 ;
-; Input:  D3_AI_ALPHA 設定済み, BOARD = ply3適用後
-; Output: OBS3_BEST = OPP最善スコア (0 = OPP合法手なし)
-; Destroys: AF,BC,DE,HL,IX,IY,LD3_IDX
+; Input:  LF_ALPHA 設定済み, BOARD = ply3適用後
+; Output: LF_BEST = OPP最善スコア (0 = OPP合法手なし)
+; Destroys: AF,BC,DE,HL,IX,IY,LF_IDX
 ; ---------------------------------------------------------
-ID3_LOOP:
+LeafEval:
         XOR  A
-        LD   (OBS3_BEST),A
+        LD   (LF_BEST),A
 
         XOR  A
-        LD   (LD3_IDX),A
+        LD   (LF_IDX),A
 
-ID3_L:
-        LD   A,(LD3_IDX)
+LF_LOOP:
+        LD   A,(LF_IDX)
         CP   64
-        JP   NC,ID3_END
+        JP   NC,LF_END
 
         LD   HL,POS_ORDER
         LD   C,A
@@ -1489,7 +1425,7 @@ ID3_L:
         POP  BC
 
         OR   A
-        JR   Z,ID3_NEXT
+        JR   Z,LF_NEXT
 
         ; score = POS_WEIGHT[pos] + flips
         LD   E,A             ; E = flips
@@ -1507,58 +1443,58 @@ ID3_L:
         ADD  A,E             ; A = POS_WEIGHT + flips
         POP  BC
 
-        LD   HL,OBS3_BEST
+        LD   HL,LF_BEST
         CP   (HL)
-        JR   C,ID3_NEXT
-        JR   Z,ID3_NEXT
-        LD   (HL),A          ; OBS3_BEST = score
+        JR   C,LF_NEXT
+        JR   Z,LF_NEXT
+        LD   (HL),A          ; LF_BEST = score
 
-        ; α-cutoff: OBS3_BEST >= D3_AI_ALPHA → OPPが十分良い応手を発見
-        LD   HL,D3_AI_ALPHA
+        ; α-cutoff: LF_BEST >= LF_ALPHA → OPPが十分良い応手を発見
+        LD   HL,LF_ALPHA
         CP   (HL)
-        JR   NC,ID3_END
+        JR   NC,LF_END
 
-ID3_NEXT:
-        LD   A,(LD3_IDX)
+LF_NEXT:
+        LD   A,(LF_IDX)
         INC  A
-        LD   (LD3_IDX),A
-        JP   ID3_L
+        LD   (LF_IDX),A
+        JP   LF_LOOP
 
-ID3_END:
+LF_END:
         RET
 
 
 ; ---------------------------------------------------------
-; AiBestScore_d3  [depth-3: AI視点 ply3ループ]
+; Ply3Best  [depth-3: AI視点 ply3ループ]
 ;
 ;   現在のBOARD(ply2 OPP着手後)でAIが打てる各手について:
 ;     1. SaveBoard(BOARD_SAVE3)
 ;     2. ApplyMove(AI)
-;     3. ID3_LOOP → OBS3_BEST = OPP leaf最善スコア
+;     3. LeafEval → LF_BEST = OPP leaf最善スコア
 ;     4. RestoreBoard(BOARD_SAVE3)
-;     5. ai_score = 255 - OBS3_BEST
-;        D3_AI_BEST = max(D3_AI_BEST, ai_score)
+;     5. ai_score = 255 - LF_BEST
+;        P3_BEST = max(P3_BEST, ai_score)
 ;
-;   β-cutoff (OppBestScore_d3側):
-;     D3_AI_BEST >= OBS2_MIN_AI (OPP現在最小) → OPPはこのply2手を選ばない
-;     → この判定はOppBestScore_d3の呼び出し後に行う
+;   β-cutoff (Ply2Best_D3側):
+;     P3_BEST >= P2_ALPHA (OPP現在最小) → OPPはこのply2手を選ばない
+;     → この判定はPly2Best_D3の呼び出し後に行う
 ;
 ; Input:  BOARD = ply2 OPP着手後
-; Output: D3_AI_BEST = AIのply3最善スコア (0 = AI合法手なし)
-; Destroys: AF,BC,DE,HL,IX,IY,ID2_IDX,LD3_IDX,D3_AI_ALPHA,OBS3_BEST
+; Output: P3_BEST = AIのply3最善スコア (0 = AI合法手なし)
+; Destroys: AF,BC,DE,HL,IX,IY,P3_IDX,LF_IDX,LF_ALPHA,LF_BEST
 ; ---------------------------------------------------------
-AiBestScore_d3:
+Ply3Best:
         XOR  A
-        LD   (D3_AI_BEST),A
+        LD   (P3_BEST),A
 
         XOR  A
-        LD   (ID2_IDX),A
+        LD   (P3_IDX),A
 
-AB_D3_LOOP:
-        ; POS_ORDER[ID2_IDX] からマスoffsetを取得 → B=row, C=col
-        LD   A,(ID2_IDX)
+P3_LOOP:
+        ; POS_ORDER[P3_IDX] からマスoffsetを取得 → B=row, C=col
+        LD   A,(P3_IDX)
         CP   64
-        JP   NC,AB_D3_END
+        JP   NC,P3_END
 
         LD   HL,POS_ORDER
         LD   C,A
@@ -1584,7 +1520,7 @@ AB_D3_LOOP:
         POP  BC
 
         OR   A
-        JP   Z,AB_D3_NEXT    ; AIが打てない手はスキップ
+        JP   Z,P3_NEXT    ; AIが打てない手はスキップ
 
         PUSH BC
 
@@ -1596,46 +1532,46 @@ AB_D3_LOOP:
         LD   D,A
         CALL ApplyMove
 
-        ; D3_AI_ALPHA = 255 - D3_AI_BEST (ID3_LOOP用cutoff閾値)
+        ; LF_ALPHA = 255 - P3_BEST (LeafEval用cutoff閾値)
         LD   A,0FFH
-        LD   HL,D3_AI_BEST
+        LD   HL,P3_BEST
         SUB  (HL)
-        LD   (D3_AI_ALPHA),A
+        LD   (LF_ALPHA),A
 
-        CALL ID3_LOOP        ; OBS3_BEST = OPPのleaf最善スコア
+        CALL LeafEval        ; LF_BEST = OPPのleaf最善スコア
 
         LD   HL,BOARD_SAVE3
         CALL RestoreBoard
 
-        ; ai_score = 255 - OBS3_BEST
+        ; ai_score = 255 - LF_BEST
         LD   A,0FFH
-        LD   HL,OBS3_BEST
-        SUB  (HL)            ; A = 255 - OBS3_BEST
+        LD   HL,LF_BEST
+        SUB  (HL)            ; A = 255 - LF_BEST
 
-        ; D3_AI_BEST = max(D3_AI_BEST, ai_score)
-        LD   HL,D3_AI_BEST
+        ; P3_BEST = max(P3_BEST, ai_score)
+        LD   HL,P3_BEST
         CP   (HL)
-        JR   C,AB_D3_POP
-        JR   Z,AB_D3_POP
+        JR   C,P3_POP
+        JR   Z,P3_POP
         LD   (HL),A
 
-        ; β-cutoff: D3_AI_BEST >= OBS2_MIN_AI → OPPはこのply2手を選ばない
-        LD   HL,OBS2_MIN_AI
+        ; β-cutoff: P3_BEST >= P2_ALPHA → OPPはこのply2手を選ばない
+        LD   HL,P2_ALPHA
         CP   (HL)
         POP  BC
-        JP   NC,AB_D3_END    ; D3_AI_BEST >= OPP現在最小 → 残りAI手の探索打ち切り
-        JP   AB_D3_NEXT
+        JP   NC,P3_END    ; P3_BEST >= OPP現在最小 → 残りAI手の探索打ち切り
+        JP   P3_NEXT
 
-AB_D3_POP:
+P3_POP:
         POP  BC
 
-AB_D3_NEXT:
-        LD   A,(ID2_IDX)
+P3_NEXT:
+        LD   A,(P3_IDX)
         INC  A
-        LD   (ID2_IDX),A
-        JP   AB_D3_LOOP
+        LD   (P3_IDX),A
+        JP   P3_LOOP
 
-AB_D3_END:
+P3_END:
         RET
 
 
@@ -1888,7 +1824,7 @@ EGA_D2:
 ;   各合法手について:
 ;     1. SaveBoard(SAVE1)
 ;     2. 仮着手 (ApplyMove)
-;     3. OppBestScore_d3 -> opp_best, OBS_COUNT=相手合法手数
+;     3. Ply2Best_D3 -> opp_best, OBS_COUNT=相手合法手数
 ;     4. CountMobility(AI) -> AI_MOB_COUNT
 ;     5. RestoreBoard(SAVE1)
 ;     6. mm_score = POS_WEIGHT[ai_pos] + (255-opp_best) + (ai_mob-opp_mob+64)
@@ -1908,36 +1844,36 @@ AIset:
 
         ; GAME_PHASE 判定
         CP   EARLY_GAME
-        JP   NC,AEV_EARLY        ; 空き >= 44 → 序盤
+        JP   NC,P1_PHASE_EARLY        ; 空き >= 44 → 序盤
         CP   MID_GAME
-        JP   NC,AEV_MID          ; 空き >= 12 → 中盤
+        JP   NC,P1_PHASE_MID          ; 空き >= 12 → 中盤
         LD   A,2                 ; 終盤
-        JP   AEV_SET_PHASE
-AEV_EARLY:
+        JP   P1_PHASE_LATE
+P1_PHASE_EARLY:
         LD   A,0
-        JP   AEV_SET_PHASE
-AEV_MID:
+        JP   P1_PHASE_LATE
+P1_PHASE_MID:
         LD   A,1
-AEV_SET_PHASE:
+P1_PHASE_LATE:
         LD   (GAME_PHASE),A
 
         ; depth選択: 空き < D3_THRESHOLD → depth-3, それ以外 → depth-2
         LD   A,(EMPTY_CACHE)
         CP   D3_THRESHOLD
         LD   A,0                 ; デフォルト: depth-2
-        JR   NC,AMM_SET_DEPTH    ; 空き >= D3_THRESHOLD → depth-2
+        JR   NC,P1_SET_DEPTH    ; 空き >= D3_THRESHOLD → depth-2
         INC  A                   ; A=1: depth-3
-AMM_SET_DEPTH:
+P1_SET_DEPTH:
         LD   (USE_DEPTH3),A
 
         XOR  A
-        LD   (AMM_IDX),A
+        LD   (P1_IDX),A
 
-AMM_LOOP:
-        ; POS_ORDER[AMM_IDX] からマスoffsetを取得 → B=row, C=col
-        LD   A,(AMM_IDX)
+P1_LOOP:
+        ; POS_ORDER[P1_IDX] からマスoffsetを取得 → B=row, C=col
+        LD   A,(P1_IDX)
         CP   64
-        JP   NC,AMM_END
+        JP   NC,P1_END
         LD   HL,POS_ORDER
         LD   C,A
         LD   B,0
@@ -1963,10 +1899,10 @@ AMM_LOOP:
         POP  BC
 
         OR   A
-        JP   Z,AMM_NEXTCOL
+        JP   Z,P1_NEXT
 
         ; === β-cutoff pre-filter ===
-        ; POS_WEIGHT[B,C] を AMM_POS_W に先読みし、OD2_BETA を計算する
+        ; POS_WEIGHT[B,C] を P1_POS_W に先読みし、P1_BETA を計算する
         ; B,C (row/col) を一時退避して POS_WEIGHT テーブルを参照
         PUSH BC
         LD   A,B
@@ -1979,33 +1915,46 @@ AMM_LOOP:
         LD   HL,POS_WEIGHT
         ADD  HL,BC
         LD   A,(HL)          ; A = POS_WEIGHT[pos]
-        LD   (AMM_POS_W),A
+        LD   (P1_POS_W),A
         POP  BC              ; B=row, C=col 復元
 
-        ; OD2_BETA = AI_BEST_SCORE - AMM_POS_W - D2_MOB_MAX
-        LD   E,A             ; E = AMM_POS_W
+        ; P1_BETA = AI_BEST_SCORE - P1_POS_W - MOB_STABLE_CAP_phase
+        LD   E,A             ; E = P1_POS_W
         LD   D,0
         LD   HL,(AI_BEST_SCORE)
         OR   A               ; carry クリア (OR A は常に C=0)
-        SBC  HL,DE           ; HL = AI_BEST_SCORE - AMM_POS_W
-        JR   C,AMM_BETA_DISABLE
-        LD   DE,D2_MOB_MAX
+        SBC  HL,DE           ; HL = AI_BEST_SCORE - P1_POS_W
+        JR   C,P1_BDIS
+        ; フェーズ別 MOB_STABLE_CAP を DE に設定
+        LD   A,(GAME_PHASE)
+        CP   1
+        JR   Z,P1_CAP_MID
+        CP   2
+        JR   Z,P1_CAP_LATE
+        LD   DE,MOB_STABLE_CAP_EARLY  ; 序盤
+        JR   P1_CAP_DONE
+P1_CAP_MID:
+        LD   DE,MOB_STABLE_CAP_MID    ; 中盤
+        JR   P1_CAP_DONE
+P1_CAP_LATE:
+        LD   DE,MOB_STABLE_CAP_LATE   ; 終盤
+P1_CAP_DONE:
         OR   A               ; carry クリア
-        SBC  HL,DE           ; HL = AI_BEST_SCORE - AMM_POS_W - D2_MOB_MAX
-        JR   C,AMM_BETA_DISABLE
+        SBC  HL,DE           ; HL = AI_BEST_SCORE - P1_POS_W - MOB_STABLE_CAP_phase
+        JR   C,P1_BDIS
         LD   A,H
         OR   A
-        JR   NZ,AMM_BETA_SKIP  ; OD2_BETA > 255: この AI 手は絶対に既存ベスト超えない
-        LD   A,L               ; A = OD2_BETA (1..255)
-        LD   (OD2_BETA),A
-        JR   AMM_BETA_DONE
-AMM_BETA_DISABLE:
+        JR   NZ,P1_BSKIP  ; P1_BETA > 255: この AI 手は絶対に既存ベスト超えない
+        LD   A,L               ; A = P1_BETA (1..255)
+        LD   (P1_BETA),A
+        JR   P1_BDONE
+P1_BDIS:
         XOR  A
-        LD   (OD2_BETA),A      ; 0 = disabled
-        JR   AMM_BETA_DONE
-AMM_BETA_SKIP:
-        JP   AMM_NEXTCOL       ; スキップ (B,C は PUSH/POP 済みで安全)
-AMM_BETA_DONE:
+        LD   (P1_BETA),A      ; 0 = disabled
+        JR   P1_BDONE
+P1_BSKIP:
+        JP   P1_NEXT       ; スキップ (B,C は PUSH/POP 済みで安全)
+P1_BDONE:
         ; === pre-filter ここまで ===
 
         PUSH BC
@@ -2021,12 +1970,12 @@ AMM_BETA_DONE:
         LD   D,A
         LD   A,(USE_DEPTH3)
         OR   A
-        JP   Z,AMM_CALL_D2
-        CALL OppBestScore_d3
-        JP   AMM_AFTER_OBS
-AMM_CALL_D2:
-        CALL OppBestScore_d2
-AMM_AFTER_OBS:
+        JP   Z,P1_CALL_D2
+        CALL Ply2Best_D3
+        JP   P1_AFTER_OBS
+P1_CALL_D2:
+        CALL Ply2Best_D2
+P1_AFTER_OBS:
 
         PUSH AF
         LD   A,(AiSide)
@@ -2051,7 +2000,7 @@ AMM_AFTER_OBS:
 
         POP  BC
 
-        LD   A,(AMM_POS_W)   ; pre-filter で取得済み (PUSH/POP BC 不要)
+        LD   A,(P1_POS_W)   ; pre-filter で取得済み (PUSH/POP BC 不要)
 
         ; A = POS_WEIGHT[pos], E = opp_best
         LD   L,A             ; HL = POS_WEIGHT[pos]
@@ -2067,11 +2016,11 @@ AMM_AFTER_OBS:
         ; フェーズ別モビリティ係数で分岐
         LD   A,(GAME_PHASE)
         CP   1
-        JP   Z,AMM_EVAL_MID
+        JP   Z,P1_EVAL_MID
         CP   2
-        JP   Z,AMM_EVAL_LATE
+        JP   Z,P1_EVAL_LATE
 
-AMM_EVAL_EARLY:
+P1_EVAL_EARLY:
         ; 序盤: HL += (mob_diff+64)*12 + (stable_diff+8)*30
         LD   A,(AI_MOB_COUNT)
         LD   D,A
@@ -2120,9 +2069,9 @@ AMM_EVAL_EARLY:
         POP  HL
         ADD  HL,DE
         POP  BC
-        JP   AMM_SCORE_CMP
+        JP   P1_SCORE_CMP
 
-AMM_EVAL_MID:
+P1_EVAL_MID:
         ; 中盤: HL += (mob_diff+64)*8 + (stable_diff+8)*50
         LD   A,(AI_MOB_COUNT)
         LD   D,A
@@ -2170,9 +2119,9 @@ AMM_EVAL_MID:
         POP  HL
         ADD  HL,DE
         POP  BC
-        JP   AMM_SCORE_CMP
+        JP   P1_SCORE_CMP
 
-AMM_EVAL_LATE:
+P1_EVAL_LATE:
         ; 終盤: HL += (mob_diff+64)*4 + (stable_diff+8)*30
         LD   A,(AI_MOB_COUNT)
         LD   D,A
@@ -2218,14 +2167,14 @@ AMM_EVAL_LATE:
         ADD  HL,DE
         POP  BC
 
-AMM_SCORE_CMP:
+P1_SCORE_CMP:
         PUSH HL
         LD   DE,(AI_BEST_SCORE)
         AND  A
         SBC  HL,DE
         POP  HL
-        JR   C,AMM_NEXTCOL
-        JR   Z,AMM_NEXTCOL
+        JR   C,P1_NEXT
+        JR   Z,P1_NEXT
 
         LD   (AI_BEST_SCORE),HL
         LD   A,B
@@ -2233,13 +2182,13 @@ AMM_SCORE_CMP:
         LD   A,C
         LD   (AI_BEST_COL),A
 
-AMM_NEXTCOL:
-        LD   A,(AMM_IDX)
+P1_NEXT:
+        LD   A,(P1_IDX)
         INC  A
-        LD   (AMM_IDX),A
-        JP   AMM_LOOP
+        LD   (P1_IDX),A
+        JP   P1_LOOP
 
-AMM_END:
+P1_END:
         LD   A,(AI_BEST_ROW)
         CP   0FFH
         RET  Z

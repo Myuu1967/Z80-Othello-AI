@@ -2032,3 +2032,49 @@ OBS_SCORE_MAX        EQU  192  ; POS_WEIGHT_MAX(128) + FLIPS_MAX(64)
 **α-β カットオフの「効いていなかった」問題**
 - 構造的な問題ではなく定数の計算ミス（D2_MOB_MAX が大きすぎた）
 - RFCT001（定数値修正）・RFCT002（閾値修正）で対処済み → **追加作業不要**
+
+---
+
+## RFCT000.ASM アセンブル成功 (2026-04-25)
+
+変数名・ラベル名・関数名リネーム + OppBestScore(depth-1 デッドコード)削除を実施。
+アセンブルエラーなし。実機動作確認は RFCT001〜003 完了後に一括実施予定。
+
+### 実施内容
+
+- 変数 12個リネーム（D3_AI_BEST→P3_BEST、OBS2_MIN_AI→P2_ALPHA 等）
+- ラベル 35個以上リネーム（P1_/P2_/P3_/LF_ プレフィックス体系）
+- 関数 4個リネーム（OppBestScore_d2→Ply2Best_D2、OppBestScore_d3→Ply2Best_D3 等）
+- OppBestScore（depth-1版, 約65行）削除：どこからも CALL されないデッドコード
+
+### 次ステップ
+
+RFCT001: MOB_STABLE_CAP をフェーズ別3定数に分割・正しい上限値に修正
+
+---
+
+## RFCT001.ASM アセンブル成功 (2026-04-25)
+
+MOB_STABLE_CAP をフェーズ別3定数に分割し、正しい上限値を設定。アセンブルエラーなし。
+
+### 実施内容
+
+- `MOB_STABLE_CAP EQU 1600`（単一定数）を削除
+- フェーズ別3定数を追加：
+  - `MOB_STABLE_CAP_EARLY EQU 1872` (96×12 + 24×30: 序盤 mob_w=12/stable_w=30)
+  - `MOB_STABLE_CAP_MID   EQU 1968` (96×8 + 24×50: 中盤 mob_w=8/stable_w=50)
+  - `MOB_STABLE_CAP_LATE  EQU 1104` (96×4 + 24×30: 終盤 mob_w=4/stable_w=30)
+- `OBS_SCORE_MAX EQU 192` 追加（RFCT002 の AMM_BETA_SKIP 閾値修正で使用予定）
+- AIset pre-filter を GAME_PHASE に基づくフェーズ別 CAP 選択に更新
+  - P1_CAP_MID / P1_CAP_LATE / P1_CAP_DONE ラベルを追加
+
+### 根拠
+
+- mob_diff+64 max ≈ 96（合法手上限約32手 + 64）
+- stable_diff+8 max ≈ 24（AI安定石上限16石 – OPP=0）
+- 旧 MOB_STABLE_CAP=1600 は ad-hoc 値（中盤以降の実測上限の近似）
+- 新値は評価式の重みと実際の最大値から正確に算出
+
+### 次ステップ
+
+RFCT002: AMM_BETA_SKIP 閾値修正 + フェーズ別分岐追加
