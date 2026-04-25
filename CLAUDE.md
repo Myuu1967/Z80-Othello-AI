@@ -4,7 +4,7 @@
 `F:\ClaudeCode\Z80-Othello\asm\` 以下を絶対パスで参照・編集する
 （旧パス `F:\oke\Z80\ASM\オセロ\` は参照しない）
 
-**現在の作業対象: `RFCT003.ASM`（作成予定） — D3_THRESHOLD 調整・実機速度計測・総合テスト。RFCT002 の速度改善を実機で確認後、D3_THRESHOLD を 25→30 以上に引き上げ、複数局 + 処理時間計測。**
+**現在の作業対象: `RFCT003.ASM`（アセンブル済み） — D3_THRESHOLD=20・評価値 PC 表示追加。実機テスト中。次: gameDisplay.py への評価値表示対応。**
 大会用バージョン確定済み: `F:\ClaudeCode\Z80-Othello\asm\MM2_AB_D3.ASM`
 
 ## 開発フロー（Python版を正とする）
