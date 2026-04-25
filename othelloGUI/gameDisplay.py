@@ -106,6 +106,8 @@ def draw_status():
         tft.fill_circle(14,  ST_Y_RETRY, STONE_R, COL_AI)
         tft.draw(vector_font, ":Quit",  142,  ST_Y_RETRY, COL_HUMAN, 0.7)
         tft.fill_circle(130, ST_Y_RETRY, STONE_R, COL_HUMAN)
+    elif eval_text:
+        tft.draw(vector_font, eval_text,  8, ST_Y_RETRY, COL_TEXT,  0.7)
 
 # ─── 盤面データ・ステータス変数 ──────────────────────
 board        = [['.' for _ in range(8)] for _ in range(8)]
@@ -113,6 +115,7 @@ score_text   = "X:-- O:--"
 move_text    = ""
 time_text    = ""
 human_text   = ""
+eval_text    = ""
 player_stone = None   # 'X' (黒) or 'O' (白)、ゲーム開始時に確定
 winner_stone = None   # 'X' or 'O'、勝者確定時にセット（Drawはそのまま None）
 retry_mode   = False  # True = "r:Retry or q:Quit ?" プロンプト表示中
@@ -191,7 +194,7 @@ def feed_byte(b):
 # ─── 行単位パーサー (UART・ログ再生で共用) ──────────
 def process_line(line):
     """1行分の文字列を解析して盤面・ステータスを更新する"""
-    global score_text, move_text, time_text, human_text, player_stone, winner_stone, retry_mode, choose_mode
+    global score_text, move_text, time_text, human_text, eval_text, player_stone, winner_stone, retry_mode, choose_mode
 
     row_idx, cells = parse_board_line(line)
     if row_idx is not None:
@@ -202,6 +205,7 @@ def process_line(line):
             retry_mode   = False
             winner_stone = None
             human_text   = ""
+            eval_text    = ""
 
     elif line.startswith('X:') and 'O:' in line:
         score_text = line
@@ -210,6 +214,10 @@ def process_line(line):
     elif line.startswith('AI moves to'):
         move_text  = line
         human_text = ""
+        draw_status()
+
+    elif line.startswith('Eval:'):
+        eval_text = line
         draw_status()
 
     elif line == 'AI PASS':
@@ -266,6 +274,7 @@ def process_line(line):
         score_text   = "X:-- O:--"
         move_text    = ""
         human_text   = ""
+        eval_text    = ""
         draw_status()
 
 # ─── ログ再生 ─────────────────────────────────────────
