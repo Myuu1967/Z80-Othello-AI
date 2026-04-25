@@ -4,7 +4,7 @@
 `F:\ClaudeCode\Z80-Othello\asm\` 以下を絶対パスで参照・編集する
 （旧パス `F:\oke\Z80\ASM\オセロ\` は参照しない）
 
-**現在の作業対象: `RFCT002.ASM`（作成予定） — AMM_BETA_SKIP 閾値修正 + フェーズ別分岐追加。α-cutoff 閾値を OBS_SCORE_MAX=192 に変更し、プリフィルタにフェーズ別 CAP 切り替えを追加。実機で速度計測。**
+**現在の作業対象: `RFCT003.ASM`（作成予定） — D3_THRESHOLD 調整・実機速度計測・総合テスト。RFCT002 の速度改善を実機で確認後、D3_THRESHOLD を 25→30 以上に引き上げ、複数局 + 処理時間計測。**
 大会用バージョン確定済み: `F:\ClaudeCode\Z80-Othello\asm\MM2_AB_D3.ASM`
 
 ## 開発フロー（Python版を正とする）

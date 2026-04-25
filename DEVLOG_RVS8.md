@@ -2078,3 +2078,43 @@ MOB_STABLE_CAP をフェーズ別3定数に分割し、正しい上限値を設�
 ### 次ステップ
 
 RFCT002: AMM_BETA_SKIP 閾値修正 + フェーズ別分岐追加
+
+---
+
+## RFCT002.ASM アセンブル成功 (2026-04-25)
+
+P1_BSKIP 閾値修正（depth-2 専用 OBS_SCORE_MAX チェック追加）と Ply2Best_D2 の P2_ALPHA 初期値修正を実施。アセンブルエラーなし。
+
+### 実施内容
+
+**① Ply2Best_D2: P2_ALPHA 初期値を OBS_SCORE_MAX(192) に変更**
+
+- 変更前: `LD A,0FFH` (255)
+- 変更後: `LD A,OBS_SCORE_MAX` (192)
+- 効果: 内側 AI ループの α-cutoff (`P2_INNER_BEST >= P2_ALPHA`) が有効化
+  - P2_INNER_BEST = POS_WEIGHT + flips ≤ 128 + 64 = 192 = OBS_SCORE_MAX が上限
+  - 旧値 255 では α-cutoff が絶対に発火しなかった
+  - 新値 192 では AI が最大スコアの応手を見つけた時点でその OPP 手の内ループ終了
+
+**② AIset pre-filter: P1_BSKIP に depth-2 専用 OBS_SCORE_MAX 閾値を追加**
+
+- 変更前: H≠0 (P1_BETA ≥ 256) のみスキップ
+- 変更後: depth-2 かつ P1_BETA ≥ OBS_SCORE_MAX(192) でもスキップ
+  - depth-3 は P3_BEST = 255 - LF_BEST ∈ [63, 255] が 192 超え可能なため旧条件のまま
+  - `LD A,(USE_DEPTH3); OR A; JR NZ,P1_BSTORE` で depth-2/3 を分岐
+
+### 動作論理
+
+depth-2 時の P1_BSKIP 正当性:
+- max mm_score (OPP有手) = P1_POS_W + P2_ALPHA_max + MOB_STABLE_CAP = P1_POS_W + 192 + CAP
+- P1_BETA ≥ 192 ⟺ AI_BEST_SCORE ≥ P1_POS_W + CAP + 192 = max mm_score → スキップ安全
+
+発火例 (MID phase, MOB_STABLE_CAP_MID=1968):
+- コーナー(P1_POS_W=128) が AI_BEST_SCORE=2288(最大値) の手を発見済みの場合:
+  - 別コーナー(P1_POS_W=128): P1_BETA = 2288 - 128 - 1968 = 192 ≥ 192 → スキップ ✓
+  - X マス(P1_POS_W=1): P1_BETA = 2288 - 1 - 1968 = 319 > 255 → スキップ ✓
+  - C マス(P1_POS_W=3): P1_BETA = 2288 - 3 - 1968 = 317 > 255 → スキップ ✓
+
+### 次ステップ
+
+RFCT003: D3_THRESHOLD 調整・実機速度計測・総合テスト
