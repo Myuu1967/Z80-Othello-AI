@@ -1558,9 +1558,9 @@ EL_NEXT:
 
 
 ; ---------------------------------------------------------
-; NegaMax  [Step 4/7 - depth check + EvalLeaf、再帰は Step 5 で追加]
+; NegaMax  [Step 5/7 - 再帰実装完成]
 ;   NM_CALL_DEPTH == NM_TOTAL_DEPTH → leaf: EvalLeaf(D=side) で返す
-;   それ以外 → NM_RECURSE (Step 5 で実装)
+;   それ以外 → NM_RECURSE (POS_ORDER ループ + 再帰 + α更新)
 ;
 ; Input:  D = side to move
 ;         (NM_CALL_DEPTH), (NM_TOTAL_DEPTH) 設定済み
@@ -1571,16 +1571,240 @@ NegaMax:
         LD   A,(NM_CALL_DEPTH)
         LD   B,A
         LD   A,(NM_TOTAL_DEPTH)
-        CP   B                  ; total_depth - call_depth
-        JR   NZ,NM_RECURSE      ; 残り深さ > 0 → 再帰 (Step 5)
+        CP   B                  ; NM_TOTAL_DEPTH == NM_CALL_DEPTH?
+        JR   NZ,NM_RECURSE      ; 残り深さ > 0 → 再帰
 
         ; remaining == 0 → leaf
         CALL EvalLeaf
         RET
 
+; ---------------------------------------------------------
+; NM_RECURSE  [Step 5/7]
+;   POS_ORDER 順に全合法手を試み、再帰 NegaMax の negamax 最大スコアを返す。
+;   合法手なし → EvalLeaf (PASS/terminal 簡易処理)。
+;
+;   per-depth テーブル (NM_CALL_DEPTH でインデックス):
+;     NM_SIDE_TBL[d]  : 手番 side
+;     NM_IDX_TBL[d]   : POS_ORDER ループインデックス (0..63)
+;     NM_HAS_MOVE[d]  : 合法手発見フラグ
+;     NM_ALPHA_TBL[d*2]: best score (符号付き16bit, NM_SCORE_MINで初期化)
+;   盤面退避: NM_GetSaveBuf(NM_CALL_DEPTH) → BOARD_SAVE2/3/...
+; ---------------------------------------------------------
 NM_RECURSE:
-        ; [Step 5 で NegaMax ループ実装]
+        ; D = side to move
+
+        ; --- 初期化 ---
+        LD   A,(NM_CALL_DEPTH)
+        LD   C,A
+        LD   B,0
+
+        LD   HL,NM_SIDE_TBL     ; NM_SIDE_TBL[depth] = D
+        ADD  HL,BC
+        LD   (HL),D
+
+        LD   HL,NM_IDX_TBL      ; NM_IDX_TBL[depth] = 0
+        ADD  HL,BC
+        LD   (HL),0
+
+        LD   HL,NM_HAS_MOVE     ; NM_HAS_MOVE[depth] = 0
+        ADD  HL,BC
+        LD   (HL),0
+
+        ADD  A,A                ; A = depth * 2
+        LD   C,A
+        LD   HL,NM_ALPHA_TBL    ; NM_ALPHA_TBL[depth] = NM_SCORE_MIN (FF01H)
+        ADD  HL,BC
+        LD   (HL),01H
+        INC  HL
+        LD   (HL),0FFH
+
+        CALL NM_GetSaveBuf      ; 盤面退避
+        CALL SaveBoard
+
+NMR_LOOP:
+        LD   A,(NM_CALL_DEPTH)
+        LD   C,A
+        LD   B,0
+
+        LD   HL,NM_IDX_TBL      ; idx = NM_IDX_TBL[depth]
+        ADD  HL,BC
+        LD   A,(HL)
+        CP   64
+        JP   NC,NMR_END
+
+        LD   HL,POS_ORDER       ; offset = POS_ORDER[idx]
+        LD   C,A
+        ADD  HL,BC
+        LD   A,(HL)             ; A = offset
+
+        ; D = NM_SIDE_TBL[depth] (B,C を offset→row/col 変換前にロード)
+        LD   C,A                ; C = offset (一時退避)
+        LD   A,(NM_CALL_DEPTH)
+        LD   HL,NM_SIDE_TBL
+        LD   E,A
+        LD   D,0
+        ADD  HL,DE
+        LD   D,(HL)             ; D = side
+        LD   A,C                ; A = offset (復元)
+
+        ; offset → B=row, C=col
+        LD   C,A
+        RRCA
+        RRCA
+        RRCA
+        AND  07H
+        LD   B,A
+        LD   A,C
+        AND  07H
+        LD   C,A
+
+        CALL CountAllFlips      ; A = flip count
+        OR   A
+        JP   Z,NMR_NEXT         ; 非合法手 → スキップ
+
+        ; 合法手: has_move[depth] = 1
+        LD   A,(NM_CALL_DEPTH)
+        LD   HL,NM_HAS_MOVE
+        LD   C,A
+        LD   B,0
+        ADD  HL,BC
+        LD   (HL),1
+
+        CALL NM_GetSaveBuf      ; 盤面復元
+        CALL RestoreBoard
+
+        ; offset を NM_IDX_TBL[depth] から再計算
+        LD   A,(NM_CALL_DEPTH)
+        LD   HL,NM_IDX_TBL
+        LD   C,A
+        LD   B,0
+        ADD  HL,BC
+        LD   A,(HL)             ; A = idx
+        LD   HL,POS_ORDER
+        LD   C,A
+        LD   B,0
+        ADD  HL,BC
+        LD   A,(HL)             ; A = offset
+
+        ; offset → B=row, C=col
+        LD   C,A
+        RRCA
+        RRCA
+        RRCA
+        AND  07H
+        LD   B,A
+        LD   A,C
+        AND  07H
+        LD   C,A
+
+        ; D = side を再ロード
+        LD   A,(NM_CALL_DEPTH)
+        LD   HL,NM_SIDE_TBL
+        LD   E,A
+        LD   D,0
+        ADD  HL,DE
+        LD   D,(HL)
+
+        CALL ApplyMove          ; D=side, B=row, C=col
+
+        ; 相手サイドを D に設定
+        LD   A,BLACK
+        CP   D
+        JR   NZ,NMR_OPP_WHITE
+        LD   D,WHITE
+        JR   NMR_DO_RECURSE
+NMR_OPP_WHITE:
+        LD   D,BLACK
+
+NMR_DO_RECURSE:
+        LD   A,(NM_CALL_DEPTH)  ; NM_CALL_DEPTH++ (再帰前)
+        INC  A
+        LD   (NM_CALL_DEPTH),A
+
+        CALL NegaMax            ; HL = score (相手視点)
+
+        LD   A,(NM_CALL_DEPTH)  ; NM_CALL_DEPTH-- (再帰後)
+        DEC  A
+        LD   (NM_CALL_DEPTH),A
+
+        ; 符号反転: HL = -HL (自プレイヤー視点)
+        EX   DE,HL
+        LD   HL,0
+        AND  A
+        SBC  HL,DE
+
+        ; alpha[depth] と比較・更新
+        LD   A,(NM_CALL_DEPTH)
+        ADD  A,A                ; A = depth * 2
+        LD   C,A
+        LD   B,0
+        PUSH HL                 ; [sp] = score
+        LD   HL,NM_ALPHA_TBL
+        ADD  HL,BC              ; HL = &alpha[depth]
+        LD   E,(HL)
+        INC  HL
+        LD   D,(HL)             ; DE = alpha
+        DEC  HL
+        PUSH HL
+        POP  IX                 ; IX = &alpha[depth].lo
+        POP  HL                 ; HL = score
+
+        PUSH HL
+        AND  A
+        SBC  HL,DE              ; score - alpha (flags)
+        POP  HL                 ; HL = score (flags 保持)
+        JP   M,NMR_NO_UPDATE
+        JR   Z,NMR_NO_UPDATE
+        LD   (IX+0),L           ; alpha.lo = score.lo
+        LD   (IX+1),H           ; alpha.hi = score.hi
+
+NMR_NO_UPDATE:
+        CALL NM_GetSaveBuf      ; 次イテレーション用に盤面復元
+        CALL RestoreBoard
+
+NMR_NEXT:
+        LD   A,(NM_CALL_DEPTH)  ; idx[depth]++
+        LD   HL,NM_IDX_TBL
+        LD   C,A
+        LD   B,0
+        ADD  HL,BC
+        INC  (HL)
+        JP   NMR_LOOP
+
+NMR_END:
+        ; 合法手なし → EvalLeaf (PASS/terminal 簡易処理)
+        LD   A,(NM_CALL_DEPTH)
+        LD   HL,NM_HAS_MOVE
+        LD   C,A
+        LD   B,0
+        ADD  HL,BC
+        LD   A,(HL)
+        OR   A
+        JR   NZ,NMR_RETURN
+
+        LD   A,(NM_CALL_DEPTH)
+        LD   HL,NM_SIDE_TBL
+        LD   C,A
+        LD   B,0
+        ADD  HL,BC
+        LD   D,(HL)
         CALL EvalLeaf
+        RET
+
+NMR_RETURN:
+        ; HL = alpha[depth]
+        LD   A,(NM_CALL_DEPTH)
+        ADD  A,A
+        LD   C,A
+        LD   B,0
+        LD   HL,NM_ALPHA_TBL
+        ADD  HL,BC
+        LD   A,(HL)
+        LD   E,A
+        INC  HL
+        LD   A,(HL)
+        LD   D,A
+        EX   DE,HL              ; HL = alpha[depth]
         RET
 
 

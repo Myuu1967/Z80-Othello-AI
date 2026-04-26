@@ -2527,6 +2527,67 @@ Step 5/7: NM_RECURSE を本実装（POS_ORDER ループ + 再帰 + α 更新）
 
 ---
 
+## RFCT100.ASM Step5/7: NM_RECURSE 本実装 (2026-04-26)
+
+### 実施内容
+
+| 変更 | 内容 |
+|------|------|
+| NegaMax コメント | Step 4 → Step 5 更新 |
+| NM_RECURSE | POS_ORDER ループ + 再帰 + α更新の完全実装 |
+
+### NM_RECURSE 動作フロー
+
+```
+NM_RECURSE(D=side):
+  NM_SIDE_TBL[depth] = side
+  NM_IDX_TBL[depth] = 0
+  NM_HAS_MOVE[depth] = 0
+  NM_ALPHA_TBL[depth] = NM_SCORE_MIN (FF01H)
+  SaveBoard(NM_GetSaveBuf(depth))
+
+  for idx in 0..63:
+    offset = POS_ORDER[idx]
+    D = NM_SIDE_TBL[depth]   ← B,C設定前に先ロード
+    B,C = row,col(offset)
+    CountAllFlips(D,B,C) → A
+    if A == 0: continue
+
+    NM_HAS_MOVE[depth] = 1
+    RestoreBoard
+    recompute offset from NM_IDX_TBL[depth]
+    ApplyMove(side, row, col)
+    D = opponent(side)
+    NM_CALL_DEPTH++
+    CALL NegaMax(D)           → HL = opponent score
+    NM_CALL_DEPTH--
+    HL = -HL                  ← negamax 符号反転
+    if HL > NM_ALPHA_TBL[depth]: update (IX=&alpha, LD (IX+0),L /(IX+1),H)
+    RestoreBoard
+
+  if NM_HAS_MOVE[depth] == 0: return EvalLeaf(side)
+  return NM_ALPHA_TBL[depth]
+```
+
+### 設計ポイント
+
+- **D ロード順序**: CountAllFlips 前に `LD E,A; LD D,0; ADD HL,DE` で NM_SIDE_TBL[depth] をロード (B,C を消費しない)
+- **offset 再取得**: CountAllFlips 破壊後は NM_IDX_TBL[depth] から POS_ORDER を再引き
+- **alpha 更新**: `PUSH HL; POP IX` で &alpha[depth] を IX に退避、`LD (IX+0),L/(IX+1),H` で書き込み
+- **NM_CALL_DEPTH**: 再帰呼び出し前後で ++ / -- して深さを管理
+- **合法手なし**: NM_HAS_MOVE == 0 → EvalLeaf (PASS/terminal 簡易処理)
+
+### 動作確認
+
+NM_TOTAL_DEPTH=0 のまま (Step 6 で変更) → NegaMax は常に leaf → Step 3/4 と等価。
+アセンブル確認のみ。
+
+### 次のステップ
+
+Step 6/7: AIset で NM_TOTAL_DEPTH=1 (depth-2) / 2 (depth-3) を設定
+
+---
+
 ## RFCT100.ASM POS_WEIGHT GA_D3更新 (2026-04-26)
 
 ### 実施内容
