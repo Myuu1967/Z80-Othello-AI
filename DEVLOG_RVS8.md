@@ -2621,6 +2621,53 @@ Step 7/7: EvalLeaf に mob/stable 項追加
 
 ---
 
+## RFCT100.ASM Step7/7: EvalLeaf mob/stable 追加 (2026-04-26)
+
+### 実施内容
+
+EvalLeaf を pos_diff のみから 3 項評価に拡張。
+
+### 評価式
+
+```
+score = pos_diff
+      + (mob_ai - mob_opp) * mob_w
+      + (stable_ai - stable_opp) * stable_w
+
+フェーズ (EMPTY_CACHE で判定):
+  EARLY (>=44): mob_w=12, stable_w=30
+  MID   (>=12): mob_w=8,  stable_w=50
+  LATE  (< 12): mob_w=4,  stable_w=30
+```
+
+### 実装ポイント
+
+| 処理 | 実装 |
+|------|------|
+| mob_ai 保存 | `PUSH AF; ... POP DE` でD=mob_ai取得 |
+| mob_opp 後の mob_diff | `LD A,D; SUB C; BIT7 → sign-extend → HL` |
+| *12 | `ADD HL,HL` x2 + PUSH + `ADD HL,HL` + POP DE + ADD |
+| *8  | `ADD HL,HL` x3 |
+| *4  | `ADD HL,HL` x2 |
+| *30 | `ADD HL,HL` → PUSH → x4 → POP DE → `SBC HL,DE` |
+| *50 | PUSH *2 + PUSH *16 + *32 + POP*16 + ADD + POP*2 + ADD |
+| EV_POS_DIFF 加算 | `EX DE,HL; LD HL,(EV_POS_DIFF); ADD HL,DE` |
+| stable 取得 | mob と同パターン (`PUSH AF; ... POP DE`) |
+
+### アセンブル
+
+アセンブルエラー確認後、実機テスト予定。
+
+### RFCT100 実装完了 (Step 1〜7/7)
+
+全 Step の実装が完了。主な動作確認項目:
+- depth-2/3 切り替え (D3_THRESHOLD=20)
+- negamax スコア符号 (AI有利 → 正値)
+- 評価値表示 `Eval:YYYY`
+- 実機での処理時間計測
+
+---
+
 ## RFCT100.ASM POS_WEIGHT GA_D3更新 (2026-04-26)
 
 ### 実施内容

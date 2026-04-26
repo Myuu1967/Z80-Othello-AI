@@ -1508,64 +1508,192 @@ NGS_D2:
 
 
 ; ---------------------------------------------------------
-; EvalLeaf  [Step 2/7: pos_diff のみ]
-;   葉ノード評価。64マスを走査し符号付き位置スコア差を返す。
-;   mob / stable はStep 7/7 で追加予定。
+; EvalLeaf  [Step 7/7: pos_diff + mob_diff*mob_w + stable_diff*stable_w]
+;   葉ノード評価 (D=side 視点, 正=有利)
 ;
-; Input:  D = 評価対象 side (AI視点: 正=有利)
-; Output: HL = pos_diff (符号付き16bit)
-;            = Sigma(POS_WEIGHT[AI石]) - Sigma(POS_WEIGHT[OPP石])
+;   score = pos_diff
+;         + (mob_ai - mob_opp) * mob_w
+;         + (stable_ai - stable_opp) * stable_w
+;
+;   フェーズ (EMPTY_CACHE で判定):
+;     EARLY (>=44): mob_w=12, stable_w=30
+;     MID   (>=12): mob_w=8,  stable_w=50
+;     LATE  (< 12): mob_w=4,  stable_w=30
+;
+; Input:  D = 評価対象 side
+; Output: HL = score (符号付き16bit)
 ; Destroys: AF, BC, DE, HL, IX, IY
 ; ---------------------------------------------------------
 EvalLeaf:
         LD   A,D
-        LD   (EV_SIDE),A    ; 評価対象 side を保存
+        LD   (EV_SIDE),A
 
-        LD   HL,0000H
+        ; --- pos_diff: 64マス走査 ---
+        LD   HL,0
         LD   (EV_POS_DIFF),HL
-
-        LD   IX,BOARD       ; IX = BOARD ポインタ
-        LD   IY,POS_WEIGHT  ; IY = POS_WEIGHT ポインタ
-        LD   B,64           ; 64マスループ
-
+        LD   IX,BOARD
+        LD   IY,POS_WEIGHT
+        LD   B,64
 EL_LOOP:
-        ; BOARD[i] を読む
         LD   A,(IX+0)
         OR   A
-        JR   Z,EL_NEXT      ; EMPTY → スキップ
-        LD   C,A            ; C = 石の色
-
-        ; POS_WEIGHT[i] を符号付き16bitに拡張 → DE
-        LD   E,(IY+0)       ; E = weight byte (符号付き)
+        JR   Z,EL_NEXT
+        LD   C,A
+        LD   E,(IY+0)
         LD   D,0
         BIT  7,E
         JR   Z,EL_POS
-        LD   D,0FFH         ; 負値: DE = sign-extended
+        LD   D,0FFH
 EL_POS:
-        ; 自石 or 相手石?
         LD   A,(EV_SIDE)
         CP   C
-        JR   NZ,EL_SUB      ; 相手石 → subtract
-
-        ; 自石: EV_POS_DIFF += weight
+        JR   NZ,EL_SUB
         LD   HL,(EV_POS_DIFF)
         ADD  HL,DE
         LD   (EV_POS_DIFF),HL
         JR   EL_NEXT
-
 EL_SUB:
-        ; 相手石: EV_POS_DIFF -= weight
         LD   HL,(EV_POS_DIFF)
-        AND  A              ; clear carry
+        AND  A
         SBC  HL,DE
         LD   (EV_POS_DIFF),HL
-
 EL_NEXT:
         INC  IX
         INC  IY
         DJNZ EL_LOOP
 
+        ; --- mob_diff ---
+        ; mob_ai = CountMobility(EV_SIDE)
+        LD   A,(EV_SIDE)
+        LD   D,A
+        CALL CountMobility      ; A = mob_ai
+        PUSH AF                 ; [sp+1]=mob_ai
+
+        ; mob_opp = CountMobility(opponent)
+        LD   A,(EV_SIDE)
+        LD   D,WHITE
+        CP   WHITE
+        JR   NZ,EL_MOB_OPP
+        LD   D,BLACK
+EL_MOB_OPP:
+        CALL CountMobility      ; A = mob_opp
+        LD   C,A                ; C = mob_opp
+        POP  DE                 ; D = mob_ai
+
+        ; mob_diff = D - C (符号付き8bit → 16bit)
+        LD   A,D
+        SUB  C                  ; A = mob_ai - mob_opp
+        LD   L,A
+        LD   H,0
+        BIT  7,L
+        JR   Z,EL_MOB_SIGNED
+        LD   H,0FFH
+EL_MOB_SIGNED:
+        ; HL = mob_diff。mob_w でスケール
+        LD   A,(EMPTY_CACHE)
+        CP   EARLY_GAME
+        JR   C,EL_MOB_NOT_EARLY
+        ; EARLY: mob_w=12 = *4 + *8
+        ADD  HL,HL              ; *2
+        ADD  HL,HL              ; *4
+        PUSH HL                 ; save *4
+        ADD  HL,HL              ; *8
+        POP  DE
+        ADD  HL,DE              ; *12
+        JR   EL_MOB_ADD
+EL_MOB_NOT_EARLY:
+        CP   MID_GAME
+        JR   C,EL_MOB_LATE
+        ; MID: mob_w=8
+        ADD  HL,HL
+        ADD  HL,HL
+        ADD  HL,HL              ; *8
+        JR   EL_MOB_ADD
+EL_MOB_LATE:
+        ; LATE: mob_w=4
+        ADD  HL,HL
+        ADD  HL,HL              ; *4
+EL_MOB_ADD:
+        ; EV_POS_DIFF += mob_term
+        EX   DE,HL              ; DE = mob_term
         LD   HL,(EV_POS_DIFF)
+        ADD  HL,DE
+        LD   (EV_POS_DIFF),HL
+
+        ; --- stable_diff ---
+        ; stable_ai = CountStable(EV_SIDE)
+        LD   A,(EV_SIDE)
+        LD   D,A
+        CALL CountStable        ; A = stable_ai
+        PUSH AF                 ; [sp+1]=stable_ai
+
+        ; stable_opp = CountStable(opponent)
+        LD   A,(EV_SIDE)
+        LD   D,WHITE
+        CP   WHITE
+        JR   NZ,EL_STABLE_OPP
+        LD   D,BLACK
+EL_STABLE_OPP:
+        CALL CountStable        ; A = stable_opp
+        LD   C,A                ; C = stable_opp
+        POP  DE                 ; D = stable_ai
+
+        ; stable_diff = D - C (符号付き8bit → 16bit)
+        LD   A,D
+        SUB  C
+        LD   L,A
+        LD   H,0
+        BIT  7,L
+        JR   Z,EL_STABLE_SIGNED
+        LD   H,0FFH
+EL_STABLE_SIGNED:
+        ; HL = stable_diff。stable_w でスケール
+        LD   A,(EMPTY_CACHE)
+        CP   EARLY_GAME
+        JR   C,EL_STABLE_NOT_EARLY
+        ; EARLY: stable_w=30 = 32-2
+        ADD  HL,HL              ; *2
+        PUSH HL                 ; save *2
+        ADD  HL,HL
+        ADD  HL,HL
+        ADD  HL,HL
+        ADD  HL,HL              ; *32
+        POP  DE
+        AND  A
+        SBC  HL,DE              ; *30
+        JR   EL_STABLE_ADD
+EL_STABLE_NOT_EARLY:
+        CP   MID_GAME
+        JR   C,EL_STABLE_LATE
+        ; MID: stable_w=50 = 32+16+2
+        ADD  HL,HL              ; *2
+        PUSH HL                 ; save *2
+        ADD  HL,HL
+        ADD  HL,HL
+        ADD  HL,HL              ; *16
+        PUSH HL                 ; save *16
+        ADD  HL,HL              ; *32
+        POP  DE
+        ADD  HL,DE              ; *48
+        POP  DE
+        ADD  HL,DE              ; *50
+        JR   EL_STABLE_ADD
+EL_STABLE_LATE:
+        ; LATE: stable_w=30 (EARLY と同じ)
+        ADD  HL,HL
+        PUSH HL
+        ADD  HL,HL
+        ADD  HL,HL
+        ADD  HL,HL
+        ADD  HL,HL              ; *32
+        POP  DE
+        AND  A
+        SBC  HL,DE              ; *30
+EL_STABLE_ADD:
+        ; total = EV_POS_DIFF + stable_term
+        EX   DE,HL              ; DE = stable_term
+        LD   HL,(EV_POS_DIFF)
+        ADD  HL,DE
         RET
 
 
