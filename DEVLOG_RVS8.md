@@ -2210,3 +2210,276 @@ AI 計算中は割り込み不可（タイトループのため）。AI 手番�
 ### 次ステップ
 
 AI の弱さ改善（Python 側での評価関数チューニング → Z80 移植）または終盤完全読み (AIset_EG) のフリーズ原因調査。
+
+---
+
+## benchmark_vs.py 実行結果・AI強化方針決定 (2026-04-26)
+
+### benchmark_vs.py 結果（n_pairs=10, 各20局）
+
+| セット | 結果 |
+|--------|------|
+| V1/d2 vs V2/d2 | **V2/d2: 16勝/20 (80%)** |
+| V1/d2 vs V1/d3 | V1/d3: 11勝 + Draw4 (55%) |
+| V1/d2 vs V2/d3 | **V2/d3: 19勝/20 (95%)** |
+
+### 考察
+
+- AI 強化の主因は **深さよりも負値テーブル（V2）**
+- depth-3 だけでは 55% 止まりだが V2/d2 で 80% → 負値が効く
+- 現 Z80 は byte(0-255) 制約のため V2 の -40（Xマス）、-20（Cマス）を直接使えない
+- → **符号付き POS_WEIGHT を Z80 に実装する**方針に決定
+
+### GA 再最適化（depth-3, 負値あり）実行開始
+
+`optimize_weights.py` を以下のように更新し、実行開始（2026-04-26）：
+
+| 変更点 | 旧 | 新 |
+|--------|----|----|
+| DEPTH | 2 | **3** |
+| N_GAMES | 10 | 5 |
+| GENERATIONS | 50 | 30 |
+| N_GAMES_FINAL | 50 | 20 |
+| ベースライン | V1_PARAMS | **V2_PARAMS** |
+| 探索範囲 | max(1, ...) | max(-60, ...) — **負値許容** |
+| 初期集団 | V1 + random | **V2 + GA_D2 + random** |
+
+所要時間目安: GA本体 ≈ 2.2時間、最終トーナメント ≈ 30分
+
+---
+
+## RFCT100.ASM 設計決定 (2026-04-26)
+
+RFCT003.ASM の AI コアを**再構築**する新ファイル。
+ファイル系譜的には RFCT003 からの分岐（RFCT00x シリーズとは別ライン）。
+
+### 背景
+
+- 現行の 4 段分割ループ（AIset / Ply2Best_D2 / D3 / Ply3Best / LeafEval）は
+  byte 制約の積み上げで設計されており、符号付き POS_WEIGHT の導入が困難
+- 「depth-1 から作り直す」方針で **再帰 negamax** に全面置き換え
+
+### 変えない部分（共通インフラ）
+
+ゲーム制御・I/O・盤面操作・合法手判定・プレイヤー入力・終盤完全読み（SearchFull 等）はすべて流用。
+
+### 置き換える部分（AI コア）
+
+| 旧 | 新 |
+|----|-----|
+| Ply2Best_D2 / D3 / Ply3Best / LeafEval | `NegaMax`（再帰）に統合 |
+| LeafEval（POS_WEIGHT+flipsのみ） | `EvalLeaf`（64マス走査・符号付き pos_diff） |
+| AIset（4段ループ） | `AIset`（NegaMax ラッパー） |
+| POS_WEIGHT（正値のみ） | **符号付きバイト**（V2値を初期値、GA結果で更新） |
+
+### スコア型
+
+**符号付き 16-bit 統一**（Python negamax と同じ）
+
+実用スコア範囲: pos_diff ≈ ±1300, mob×12 ≈ ±384, stable×50 ≈ ±400 → 合計 ±2100 程度
+
+### 定数
+
+```asm
+NM_SCORE_MIN    EQU  0FF01H   ; -255 相当（初期 alpha 値）
+; フェーズ閾値・D3_THRESHOLD は流用
+```
+
+### 変数
+
+```asm
+NM_TOTAL_DEPTH: DEFB 0    ; 総探索深さ (2 or 3)
+NM_CALL_DEPTH:  DEFB 0    ; 現在再帰深さ (0=AIset直下)
+NM_ALPHA_TBL:   DEFS 8    ; alpha[depth] 16bit × 4
+NM_LOOP_IDX:    DEFS 4    ; POS_ORDERインデックス (depth 0..3)
+NM_HAS_MOVE:    DEFS 4    ; 合法手フラグ (depth 0..3)
+NM_ROOT_SCORE:  DEFW 0    ; AI視点最善スコア (符号付き16bit)
+NM_ROOT_POS:    DEFB 0FFH ; 最善手オフセット (FFH=未発見)
+EV_POS_DIFF:    DEFW 0    ; EvalLeaf pos_diff (符号付き16bit)
+EV_SIDE:        DEFB 0    ; EvalLeaf 対象 side
+```
+
+削除: `P2_INNER_BEST, OBS_COUNT, P2_ALPHA, P1_BETA, P3_BEST, LF_ALPHA, LF_BEST, P1_IDX, P2_IDX, P3_IDX, LF_IDX, P1_POS_W, USE_DEPTH3, AI_BEST_SCORE, AI_BEST_ROW, AI_BEST_COL`
+
+### 関数
+
+| 関数名 | 役割 | 入力 | 出力 |
+|--------|------|------|------|
+| `AIset` | ルート探索・最善手着手 | — | BOARD更新 |
+| `NegaMax` | 再帰 α-β 探索 | D=side | HL=符号付き16bitスコア |
+| `EvalLeaf` | 葉ノード評価（64マス走査） | D=side | HL=符号付き16bitスコア |
+| `NM_GetSaveBuf` | NM_CALL_DEPTH → バッファアドレス | — | HL=addr |
+
+### 探索構造（疑似コード）
+
+```
+AIset:
+  NM_ROOT_SCORE = NM_SCORE_MIN
+  NM_TOTAL_DEPTH = 2 or 3
+  for each pos in POS_ORDER:
+    SaveBoard(BOARD_SAVE1) → ApplyMove(AiSide, pos)
+    NM_CALL_DEPTH=0 / NM_ALPHA_TBL[0]=NM_SCORE_MIN
+    score = NegaMax(D=HumSide)
+    RestoreBoard(BOARD_SAVE1)
+    if score > NM_ROOT_SCORE: update
+
+NegaMax(D=side):
+  d = NM_CALL_DEPTH
+  if (NM_TOTAL_DEPTH - d) == 0: return EvalLeaf(D=side)
+  save_buf = NM_GetSaveBuf()   ; BOARD_SAVE2/3/EG_SAVES[n]
+  NM_HAS_MOVE[d]=0 / NM_ALPHA_TBL[d]=NM_SCORE_MIN
+  for each pos in POS_ORDER:
+    SaveBoard(save_buf) → ApplyMove(side, pos)
+    NM_CALL_DEPTH=d+1 / NM_ALPHA_TBL[d+1]=NM_SCORE_MIN
+    child = NegaMax(D=3-side)
+    NM_CALL_DEPTH=d
+    score = -child             ; negamax 反転
+    RestoreBoard(save_buf)
+    if score > NM_ALPHA_TBL[d]: NM_ALPHA_TBL[d]=score
+    if d>0 and NM_ALPHA_TBL[d] >= -NM_ALPHA_TBL[d-1]: break (β-cutoff)
+  if NM_HAS_MOVE[d]==0:
+    if HasAnyLegalMove(3-side)==0: return terminal_score(side)
+    return -NegaMax(D=3-side)  ; PASS (depth 消費しない)
+  return NM_ALPHA_TBL[d]
+
+EvalLeaf(D=side):
+  pos_diff=0
+  for sq in 0..63:
+    sign_ext(POS_WEIGHT[sq]) を side/opp で加減算
+  mob_diff  = CountMobility(side) - CountMobility(3-side)
+  stable_diff = CountStable(side) - CountStable(3-side)
+  return pos_diff + mob_diff×mob_w + stable_diff×stable_w  (フェーズ別重み)
+```
+
+### 設計上の決定事項
+
+1. **PASS の depth 消費なし** — Python negamax と同じ。強制手なので depth を消費しない
+2. **terminal_score** — `CountStones` で石差 × 大きな係数（200 程度）を返し、通常評価スコアと区別する
+3. **α-β のルート alpha** — AIset ループが `NM_ROOT_SCORE` として機能。各 NegaMax 呼び出しに `-NM_ROOT_SCORE` を beta として渡す代わりに、AIset 内でスコア更新後に次手の alpha 値を NM_ALPHA_TBL[0] に書き込む
+
+### 次のTODO
+
+1. RFCT100.ASM 実装（depth-1 EvalLeaf → NegaMax depth-1 → depth-2 → depth-3 の順で確認）
+2. GA 結果が出たら POS_WEIGHT を更新
+3. 実機確認・処理時間計測
+
+---
+
+## RFCT100.ASM Step1/7: ファイル土台作成 (2026-04-26)
+
+### 実施内容
+
+| 変更 | 内容 |
+|------|------|
+| ヘッダー | RFCT100 説明・設計概要に全面更新 |
+| POS_WEIGHT | 符号付き V2 値に変更（角=+120, Xマス=-40, Cマス=-20, near_x=-5, 辺=+20 等） |
+| POS_ORDER | V2 重み降順に更新（120→20→15→10→5→3→1→-5→-20→-40） |
+| 定数追加 | `NM_SCORE_MIN EQU 0FF01H` (-255, 初期 alpha 値) |
+| 変数削除 | 旧AIワーク変数 16個削除（AI_BEST_SCORE/ROW/COL, P2_ALPHA, P1_BETA, P1_POS_W, P1/P2/P3/LF_IDX, P3_BEST, LF_ALPHA/BEST, USE_DEPTH3, OBS_COUNT, P2_INNER_BEST） |
+| 変数追加 | NM_TOTAL_DEPTH, NM_CALL_DEPTH, NM_ALPHA_TBL(8B), NM_HAS_MOVE(4B), NM_ROOT_SCORE, NM_ROOT_POS, EV_POS_DIFF, EV_SIDE |
+| AIコア削除 | Ply2Best_D2, Ply2Best_D3, Ply3Best, LeafEval, AIset (旧) を全削除 |
+| AIset スタブ | `DEFM "RFCT100 AIset stub"` を出力して RET するだけの仮実装 |
+| 復元 | CountMobility, CountEmpty, CountStable, EG_GetSaveAddr (削除ブロックに含まれていたため) |
+
+### 変数定義（新）
+
+```asm
+NM_TOTAL_DEPTH: DEFB 0     ; 総探索深さ (2 or 3)
+NM_CALL_DEPTH:  DEFB 0     ; 現在の再帰深さ (0=AIset直下)
+NM_ALPHA_TBL:   DEFS 8     ; alpha[depth] 符号付き16bit x 4
+NM_HAS_MOVE:    DEFS 4     ; 合法手発見フラグ (depth 0..3)
+NM_ROOT_SCORE:  DEFW 0     ; AIset: ルートベストスコア (符号付き16bit)
+NM_ROOT_POS:    DEFB 0FFH  ; AIset: 最善手 offset (FFH=未発見)
+EV_POS_DIFF:    DEFW 0     ; EvalLeaf: pos_diff 作業用
+EV_SIDE:        DEFB 0     ; EvalLeaf: 評価対象 side
+```
+
+### 次のステップ
+
+Step 2/7: NM_GetSaveBuf + EvalLeaf (pos_diff のみ) → アセンブル確認
+
+---
+
+## RFCT100.ASM Step2/7: NM_GetSaveBuf + EvalLeaf (2026-04-26)
+
+### 実施内容
+
+#### NM_GetSaveBuf
+AIset は BOARD_SAVE1 を使うため depth=0 から BOARD_SAVE2 を割り当て。
+
+| NM_CALL_DEPTH | バッファ |
+|---|---|
+| 0 | BOARD_SAVE2 |
+| 1 | BOARD_SAVE3 |
+| N≥2 | BOARD_EG_SAVES + (N-2)×64 |
+
+#### EvalLeaf (pos_diff のみ)
+- IX=BOARD / IY=POS_WEIGHT ポインタを同期インクリメントして64マス走査
+- `LD E,(IY+0)` + BIT7 判定で符号拡張 → DE (16bit signed)
+- 自石: `ADD HL,DE` / 相手石: `AND A; SBC HL,DE`
+- mob_diff / stable_diff は Step 7/7 で追加
+
+### 次のステップ
+
+Step 3/7: AIset スタブを depth-1 固定の実動版に置き換え → 実機確認
+
+---
+
+## RFCT100.ASM Step3/7: AIset depth-1 実動版 (2026-04-26)
+
+### 実施内容
+
+| 変更 | 内容 |
+|------|------|
+| 変数追加 | `AS_IDX: DEFB 0`（POS_ORDER ループインデックス）、`AS_OFFSET: DEFB 0`（着手 offset 一時保存） |
+| AIset 置き換え | スタブを depth-1 固定の実動版に全面置き換え |
+
+### AIset depth-1 動作フロー
+
+```
+CountEmpty → EMPTY_CACHE 保存
+NM_ROOT_SCORE = NM_SCORE_MIN (-255) / NM_ROOT_POS = FFH
+SaveBoard(BOARD_SAVE1)
+
+for AS_IDX in 0..63:
+  offset = POS_ORDER[AS_IDX]
+  CountAllFlips(AiSide, row, col) → A
+  if A == 0: next   ; 非合法手
+  RestoreBoard(BOARD_SAVE1)
+  ApplyMove(AiSide, row, col)
+  EvalLeaf(D=AiSide) → HL (符号付き16bit)
+  if HL > NM_ROOT_SCORE:
+    NM_ROOT_SCORE = HL / NM_ROOT_POS = offset
+  RestoreBoard(BOARD_SAVE1)
+
+RestoreBoard(BOARD_SAVE1) → ApplyMove(NM_ROOT_POS)
+"AI moves to XY\r\n" 出力
+"Eval:YYYY\r\n" 出力
+```
+
+### 符号付き 16bit 比較の実装
+
+```asm
+; HL = score, DE = best_score (A経由ロード)
+PUSH HL
+AND  A
+SBC  HL,DE        ; HL = score - best (flags 使用)
+POP  HL           ; HL = score 復元 (POP は flags 変更しない)
+JP   M,skip       ; score < best → skip
+JR   Z,skip       ; equal → skip
+; score > best → update
+```
+
+### DE ロードの制約対応
+
+Z80 は `LD DE,(nn)` が非対応のため A 経由で 2 バイトロード:
+```asm
+LD   A,(NM_ROOT_SCORE)
+LD   E,A
+LD   A,(NM_ROOT_SCORE+1)
+LD   D,A
+```
+
+### 次のステップ
+
+Step 4/7: NegaMax 最小実装（depth=1 で EvalLeaf 呼び出し）→ AIset から NegaMax を呼ぶ形に変更

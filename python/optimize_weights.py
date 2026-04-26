@@ -21,12 +21,16 @@ import othello_mm3_ab as oth
 # =========================================================
 POP_SIZE       = 20    # 個体数
 N_ELITE        = 5     # エリート（次世代に引き継ぐ上位個体数）
-N_GAMES        = 10    # GA評価ゲーム数（粗いフィルタ）
-N_GAMES_FINAL  = 50    # 最終トーナメントのゲーム数（精密評価）
-DEPTH          = 2     # 評価用探索深さ
-GENERATIONS    = 50    # 世代数
+N_GAMES        = 5     # GA評価ゲーム数（粗いフィルタ）
+N_GAMES_FINAL  = 20    # 最終トーナメントのゲーム数（精密評価）
+DEPTH          = 3     # 評価用探索深さ
+GENERATIONS    = 30    # 世代数
 MUT_RATE       = 0.3   # 各パラメータの突然変異確率
 MUT_DELTA      = 15    # 突然変異の最大変化幅
+
+# 負値を許容する範囲（Z80移植時は別途対応）
+PARAM_MIN = -60
+PARAM_MAX = 255
 
 RANDOM_SEED = 42
 
@@ -76,8 +80,14 @@ def table_to_params(table):
     rep = [(0,0),(0,1),(0,2),(0,3),(1,1),(1,2),(1,3),(2,2),(2,3),(3,3)]
     return [table[r*8+c] for r,c in rep]
 
-# 現行 V1 テーブルの10パラメータ
+# 現行 V1 テーブルの10パラメータ（正値のみ）
 V1_PARAMS = table_to_params(oth.POS_WEIGHT_V1)
+
+# V2 テーブル（負値あり、benchmark で V1/d2 に 80% 勝利確認済み）
+V2_PARAMS = [120, -20, 20, 10, -40, -5, 1, 15, 5, 3]
+
+# 前回 GA 最適化結果（2026-04-22, depth-2, 正値のみ）
+GA_D2_PARAMS = [128, 3, 17, 30, 1, 36, 15, 18, 29, 1]
 
 # =========================================================
 # 対戦・評価
@@ -106,22 +116,28 @@ def play_one_game(black_table, white_table, depth=DEPTH):
 
 def evaluate(params, ref_params, n_games=N_GAMES, depth=DEPTH):
     """
-    ref_params（基準AI）との対戦勝利数を返す。
+    ref_params（基準AI）との対戦を行い (wins, total_margin) を返す。
+    wins: 勝利数（主評価）
+    total_margin: 全ゲームの石差合計（副評価、同勝利数の個体を区別する）
     先手・後手を均等に分けて対戦する。
     """
     table     = params_to_table(params)
     ref_table = params_to_table(ref_params)
     wins = 0
+    total_margin = 0
     for i in range(n_games):
         if i % 2 == 0:          # 評価対象が先手(BLACK)
             b, o = play_one_game(table, ref_table, depth)
-            if b > o:
+            margin = b - o
+            if margin > 0:
                 wins += 1
         else:                   # 評価対象が後手(WHITE)
             b, o = play_one_game(ref_table, table, depth)
-            if o > b:
+            margin = o - b
+            if margin > 0:
                 wins += 1
-    return wins
+        total_margin += margin
+    return (wins, total_margin)
 
 def tournament(candidates, n_games=N_GAMES_FINAL, depth=DEPTH):
     """
@@ -155,7 +171,7 @@ def tournament(candidates, n_games=N_GAMES_FINAL, depth=DEPTH):
             elapsed = time.time() - t0
             remain  = elapsed / done * (total_pairs - done) if done > 0 else 0
             print(f"  [{done}/{total_pairs}] {i+1}vs{j+1}: "
-                  f"累計{wins[i]}-{wins[j]}  残り≈{remain/60:.1f}分", end='\r')
+                  f"累計{wins[i]}-{wins[j]}  残り約{remain/60:.1f}分", end='\r')
     print()
     return wins
 
@@ -163,19 +179,19 @@ def tournament(candidates, n_games=N_GAMES_FINAL, depth=DEPTH):
 # 遺伝的アルゴリズム
 # =========================================================
 def random_individual():
-    """V1パラメータをランダムにばらした初期個体"""
-    return [max(1, min(255, v + random.randint(-40, 40))) for v in V1_PARAMS]
+    """V2パラメータを中心にランダムにばらした初期個体（負値許容）"""
+    return [max(PARAM_MIN, min(PARAM_MAX, v + random.randint(-40, 40))) for v in V2_PARAMS]
 
 def crossover(a, b):
     """各パラメータをランダムに親どちらかから選ぶ（一様交叉）"""
     return [random.choice([a[i], b[i]]) for i in range(len(a))]
 
 def mutate(params):
-    """各パラメータを確率 MUT_RATE で ±MUT_DELTA 以内でランダム変化"""
+    """各パラメータを確率 MUT_RATE で ±MUT_DELTA 以内でランダム変化（負値許容）"""
     result = params[:]
     for i in range(len(result)):
         if random.random() < MUT_RATE:
-            result[i] = max(1, min(255, result[i] + random.randint(-MUT_DELTA, MUT_DELTA)))
+            result[i] = max(PARAM_MIN, min(PARAM_MAX, result[i] + random.randint(-MUT_DELTA, MUT_DELTA)))
     return result
 
 def print_table(params):
@@ -198,29 +214,32 @@ def run_ga():
     print(f"個体数={POP_SIZE}, エリート={N_ELITE}, "
           f"GA評価ゲーム={N_GAMES}, 最終トーナメント={N_GAMES_FINAL}ゲーム, "
           f"depth={DEPTH}, 世代={GENERATIONS}")
-    print(f"V1 パラメータ: {V1_PARAMS}")
+    print(f"V2 パラメータ（ベースライン）: {V2_PARAMS}")
+    print(f"GA_D2 パラメータ（前回結果）: {GA_D2_PARAMS}")
     print()
 
-    # 初期集団: V1 + ランダム個体
-    population = [V1_PARAMS[:]] + [random_individual() for _ in range(POP_SIZE - 1)]
+    # 初期集団: V2 + 前回GA結果 + ランダム個体
+    population = [V2_PARAMS[:], GA_D2_PARAMS[:]] + [random_individual() for _ in range(POP_SIZE - 2)]
 
-    best_ever_score  = -1
+    best_ever_score  = (-1, -999999)
     best_ever_params = None
-    # 動的ベースライン: 最初はV1、毎世代更新
-    baseline_params  = V1_PARAMS[:]
+    # 動的ベースライン: 最初はV2、毎世代更新
+    baseline_params  = V2_PARAMS[:]
     # 殿堂入り: ★新記録を出した全候補（最終トーナメント用）
-    hall_of_fame     = [V1_PARAMS[:]]
+    hall_of_fame     = [V2_PARAMS[:]]
     t_start = time.time()
 
     for gen in range(GENERATIONS):
         t_gen = time.time()
 
         # 全個体を評価（基準: 動的ベースライン）
+        # evaluate() は (wins, total_margin) タプルを返す
         scored = [(evaluate(ind, baseline_params), ind) for ind in population]
-        scored.sort(key=lambda x: -x[0])
+        scored.sort(key=lambda x: x[0], reverse=True)  # タプル比較: wins優先→石差
 
         best_score, best_params = scored[0]
-        avg_score = sum(s for s, _ in scored) / len(scored)
+        avg_wins   = sum(s[0] for s, _ in scored) / len(scored)
+        avg_margin = sum(s[1] for s, _ in scored) / len(scored)
 
         if best_score > best_ever_score:
             best_ever_score  = best_score
@@ -237,8 +256,9 @@ def run_ga():
         remain     = gen_time * (GENERATIONS - gen - 1)
 
         print(f"世代 {gen+1:3d}/{GENERATIONS}  "
-              f"最高={best_score}/{N_GAMES}  平均={avg_score:.1f}  "
-              f"世代時間={gen_time:.0f}s  残り≈{remain/60:.0f}分{marker}")
+              f"最高={best_score[0]}/{N_GAMES}(石差{best_score[1]:+d})  "
+              f"平均勝={avg_wins:.1f} 石差={avg_margin:.0f}  "
+              f"世代時間={gen_time:.0f}s  残り約{remain/60:.0f}分{marker}")
         if marker:
             print(f"  パラメータ: {best_params}")
 
@@ -289,10 +309,11 @@ def run_ga():
     print_table(best_params)
     print()
     print("--- 各マス分類の値 ---")
-    for name, val, v1 in zip(PARAM_NAMES, best_params, V1_PARAMS):
-        diff = val - v1
+    print(f"  {'名前':12s}  {'優勝':>5}  {'V2':>5}  {'GA_D2':>5}  {'V1':>5}")
+    for name, val, v2, gd2, v1 in zip(PARAM_NAMES, best_params, V2_PARAMS, GA_D2_PARAMS, V1_PARAMS):
+        diff = val - v2
         sign = f"+{diff}" if diff >= 0 else str(diff)
-        print(f"  {name:12s}: {val:3d}  (V1={v1:3d}, {sign})")
+        print(f"  {name:12s}: {val:5d}  (V2={v2:5d} {sign:>4s}, GA_D2={gd2:3d}, V1={v1:3d})")
 
     return best_params
 

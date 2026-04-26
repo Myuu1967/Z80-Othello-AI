@@ -4,7 +4,7 @@
 `F:\ClaudeCode\Z80-Othello\asm\` 以下を絶対パスで参照・編集する
 （旧パス `F:\oke\Z80\ASM\オセロ\` は参照しない）
 
-**現在の作業対象: `RFCT003.ASM`（実機確認済み） — D3_THRESHOLD=20・評価値表示・PB5 中断機能追加済み。次: AI 強化（Python 側評価改善 → Z80 移植）または AIset_EG フリーズ調査。**
+**現在の作業対象: `RFCT100.ASM`（設計完了・実装中） — 再帰 negamax + 符号付き POS_WEIGHT による AI コア再構築。RFCT003.ASM からの分岐（別ライン）。**
 大会用バージョン確定済み: `F:\ClaudeCode\Z80-Othello\asm\MM2_AB_D3.ASM`
 
 ## 開発フロー（Python版を正とする）
@@ -72,7 +72,8 @@ RVS8_GREEDY.ASM
                                                          └─ RFCT000.ASM ← 変数名・ラベル名・関数名整理（ロジック変更なし）
                                                               └─ RFCT001.ASM ← カットオフ定数値見直し（MOB_STABLE_CAP フェーズ別）
                                                                    └─ RFCT002.ASM ← AMM_BETA_SKIP 閾値修正 + フェーズ別分岐
-                                                                        └─ RFCT003.ASM ← D3_THRESHOLD 調整・総合テスト版
+                                                                        └─ RFCT003.ASM ← D3_THRESHOLD 調整・総合テスト版（実機確認済み）
+                                                                             └─ RFCT100.ASM ← AIコア再構築（再帰negamax + 符号付きPOS_WEIGHT）★現在作業中
 ```
 
 ## 実装済み機能 (MM2_AB_D3.ASM) ← 大会用確定版
@@ -160,11 +161,12 @@ max score = 128 + 64 flips = 192 < 256 (byte-safe)
 14. **【RFCT002】AMM_BETA_SKIP 閾値修正＋フェーズ別分岐追加** — α-cutoff の閾値を `OBS_SCORE_MAX=192` に変更。プリフィルタにフェーズ別 CAP 切り替え追加。実機で速度計測。
 15. ~~**【RFCT003】D3_THRESHOLD 調整・総合テスト**~~ ✓ 完了（D3_THRESHOLD=20・評価値表示・PB5中断機能、実機確認済み）
 16. 終盤完全読み復活（速度改善後に再挑戦）
-17. GA再最適化（リファクタ完了後、depth-3で学習）
+17. ~~GA再最適化（リファクタ完了後、depth-3で学習）~~ → **実行中（2026-04-26）** depth-3・負値あり・V2ベース。結果待ち。
 18. ~~**評価値表示**~~ ✓ 完了（RFCT003、TeraTerm + Pico LCD 5行目、実機確認済み）
 19. ~~**投了/中断処理**~~ ✓ 完了（RFCT003、PB5押下でリトライ画面、PC・Pico両方確認済み）
 20. **Pico棋譜記録・盤面ログ** — 対局中の全着手と盤面スナップショットをLittleFSに保存。replay_log機能と連携
 21. **EPROM（27C256）単独起動動作確認** — モニタROMと差し替えて電源ON直後からオセロが起動することを確認
+22. **【RFCT100】AIコア再構築** — 再帰 negamax + 符号付き POS_WEIGHT（V2ベース）。設計完了（2026-04-26）。実装中。
 
 ## ROM ブート化計画（オセロ完成後）
 
