@@ -110,7 +110,7 @@ D3_THRESHOLD EQU 20         ; 空き < 20 → depth-3 / 空き >= 20 → depth-2
 MOB_STABLE_CAP_EARLY EQU 1872   ; 96×12 + 24×30 (序盤: mob_w=12, stable_w=30)
 MOB_STABLE_CAP_MID   EQU 1968   ; 96×8  + 24×50 (中盤: mob_w=8,  stable_w=50)
 MOB_STABLE_CAP_LATE  EQU 1104   ; 96×4  + 24×30 (終盤: mob_w=4,  stable_w=30)
-OBS_SCORE_MAX        EQU  130   ; POS_WEIGHT_MAX(66) + FLIPS_MAX(64)
+OBS_SCORE_MAX        EQU  192   ; POS_WEIGHT_MAX(128) + FLIPS_MAX(64)
 
 ; NegaMax スコア定数
 NM_SCORE_MIN    EQU  0FF01H ; -255 (初期 alpha 値, 符号付き 16bit)
@@ -167,56 +167,74 @@ STONE_CHAR:
 ; ---------------------------------------------------------
 ; POS_WEIGHT  (64 bytes, row-major 8x8)
 ;
-;   GA最適化テーブル (2026-04-26, depth-3 AI同士 30世代, GA_D3優勝)
-;   符号付きバイト。DEFB の負値はアセンブラが2の補数に変換する。
-;   sign-ext して 16bit 加減算に使う。
+;   GA最適化テーブル (2026-04-22, depth-2 AI同士 50世代)
+;   Corner=128, X-sq=1(禁止), C-sq=3, near_x=36, center=1
+;   max score = 128 + 64 flips = 192 < 256 (byte-safe)
 ;
-;   マス分類 (GA_D3):
-;     corner   (A1/H1/A8/H8)      :  +66
-;     edge_ctr (D1/A4 etc.)       :  +44 ← 辺中央を重視
-;     inner2   (D3/C4 etc.)       :  +23
-;     near_x   (C2/B3 etc.)       :  +22 ← V2より大幅上昇
-;     inner    (C3 etc.)          :  +10
-;     inner_edge(D2/B4 etc.)      :   +1
-;     edge_near(C1/A3 etc.)       :   -1
-;     center   (D4 etc.)          :  -29 ← 中央を強く嫌う
-;     c_sq     (B1/A2 etc.)       :  -32
-;     x_sq     (B2/G2 etc.)       :  -45 ← 強く禁止
+;   マス分類:
+;     角  (A1/H1/A8/H8)        : 128
+;     Xマス(B2/G2/B7/G7)       :   1  ← 角を相手に渡す最悪手
+;     Cマス(B1/A2/G1/H2 etc.)  :   3  ← 角隣、相手に角を渡しやすい
+;     near_x(C2/B3 etc.)       :  36  ← GA最適化で高評価
+;     辺(C1/A3 etc.)           :  17
+;     辺中央(D1/A4 etc.)       :  30
+;     内側辺寄り(D2/B4 etc.)   :  15
+;     内側(C3 etc.)            :  18
+;     inner2(D3/C4 etc.)       :  29
+;     中央(D4 etc.)            :   1  ← GA最適化で低評価
 ; ---------------------------------------------------------
+; [WEIGHT] 位置評価テーブル (符号付きバイト, V2ベース) -------
+;
+;   符号付き値: 正=有利マス / 負=不利マス
+;   DEFB の負値はアセンブラが 2の補数に変換する
+;   sign-ext して 16bit 加減算に使う
+;
+;   マス分類 (V2):
+;     角  (A1/H1/A8/H8)         : +120
+;     Xマス(B2/G2/B7/G7)        :  -40 ← 角を渡す最悪手
+;     Cマス(B1/A2/G1/H2 etc.)   :  -20 ← 角隣
+;     near_x(C2/B3 etc.)        :   -5
+;     辺(C1/A3 etc.)            :  +20
+;     辺中央(D1/A4 etc.)        :  +10
+;     内側辺寄り(D2/B4 etc.)    :   +1
+;     内側(C3 etc.)             :  +15
+;     inner2(D3/C4 etc.)        :   +5
+;     中央(D4 etc.)             :   +3
+;
 POS_WEIGHT:
         ;       A    B    C    D    E    F    G    H
-        DEFB   66, -32,  -1,  44,  44,  -1, -32,  66  ; 1
-        DEFB  -32, -45,  22,   1,   1,  22, -45, -32  ; 2
-        DEFB   -1,  22,  10,  23,  23,  10,  22,  -1  ; 3
-        DEFB   44,   1,  23, -29, -29,  23,   1,  44  ; 4
-        DEFB   44,   1,  23, -29, -29,  23,   1,  44  ; 5
-        DEFB   -1,  22,  10,  23,  23,  10,  22,  -1  ; 6
-        DEFB  -32, -45,  22,   1,   1,  22, -45, -32  ; 7
-        DEFB   66, -32,  -1,  44,  44,  -1, -32,  66  ; 8
+        DEFB  120, -20,  20,  10,  10,  20, -20, 120  ; 1
+        DEFB  -20, -40,  -5,   1,   1,  -5, -40, -20  ; 2
+        DEFB   20,  -5,  15,   5,   5,  15,  -5,  20  ; 3
+        DEFB   10,   1,   5,   3,   3,   5,   1,  10  ; 4
+        DEFB   10,   1,   5,   3,   3,   5,   1,  10  ; 5
+        DEFB   20,  -5,  15,   5,   5,  15,  -5,  20  ; 6
+        DEFB  -20, -40,  -5,   1,   1,  -5, -40, -20  ; 7
+        DEFB  120, -20,  20,  10,  10,  20, -20, 120  ; 8
 
 ; [WEIGHT] ムーブオーダリング用: POS_WEIGHT降順のマスoffset一覧 (64バイト)
 ; offset = row*8 + col  (row=0..7, col=0..7)
-; GA_D3 重み降順: 66, 44, 23, 22, 10, 1, -1, -29, -32, -45
+; V2 重み降順: 120, 20, 15, 10, 5, 3, 1, -5, -20, -40
 POS_ORDER:
-        ; weight=66: corner
+        ; weight=120: コーナー
         DEFB  0,  7, 56, 63
-        ; weight=44: edge_ctr (D1/A4 etc.)
-        DEFB  3,  4, 24, 31, 32, 39, 59, 60
-        ; weight=23: inner2 (D3/C4 etc.)
-        DEFB 19, 20, 26, 29, 34, 37, 43, 44
-        ; weight=22: near_x (C2/B3 etc.)
-        DEFB 10, 13, 17, 22, 41, 46, 50, 53
-        ; weight=10: inner (C3 etc.)
+        ; weight=20: 辺 (C1/A3 etc.)
+        DEFB  2,  5, 58, 61, 16, 23, 40, 47
+        ; weight=15: inner (C3 etc.)
         DEFB 18, 21, 42, 45
-        ; weight=1: inner_edge (D2/B4 etc.)
-        DEFB 11, 12, 25, 30, 33, 38, 51, 52
-        ; weight=-1: edge_near (C1/A3 etc.)
-        DEFB  2,  5, 16, 23, 40, 47, 58, 61
-        ; weight=-29: center (D4 etc.)
+        ; weight=10: 辺中央 (D1/A4 etc.)
+        DEFB  3,  4, 59, 60, 24, 31, 32, 39
+        ; weight=5: inner2 (D3/C4 etc.)
+        DEFB 19, 20, 43, 44, 26, 29, 34, 37
+        ; weight=3: 中央 (D4 etc.)
         DEFB 27, 28, 35, 36
-        ; weight=-32: c_sq (B1/A2 etc.)
-        DEFB  1,  6,  8, 15, 48, 55, 57, 62
-        ; weight=-45: x_sq (B2/G2 etc.)
+        ; weight=1: 辺内側 (D2/B4 etc.)
+        DEFB 11, 12, 51, 52, 25, 30, 33, 38
+        ; weight=-5: near_x (C2/B3 etc.)
+        DEFB 10, 13, 50, 53, 17, 22, 41, 46
+        ; weight=-20: Cマス (B1/A2 etc.)
+        DEFB  1,  6, 57, 62,  8, 15, 48, 55
+        ; weight=-40: Xマス (B2/G2 etc.)
         DEFB  9, 14, 49, 54
 
 ; [WEIGHT] 安定石コーナーテーブル (3バイト x 4コーナー)
@@ -312,8 +330,6 @@ NM_TOTAL_DEPTH: DEFB 0          ; 総探索深さ (2 or 3)
 NM_CALL_DEPTH:  DEFB 0          ; 現在の再帰深さ (0=AIset直下)
 NM_ALPHA_TBL:   DEFS 8          ; alpha[depth] 符号付き16bit x 4 (depth 0..3)
 NM_HAS_MOVE:    DEFS 4          ; 合法手発見フラグ (depth 0..3, 0=未発見 / 1=発見)
-NM_IDX_TBL:     DEFS 4          ; ループインデックス per depth (0..3)
-NM_SIDE_TBL:    DEFS 4          ; 手番 side per depth (0..3)
 NM_ROOT_SCORE:  DEFW 0          ; AIset: 符号付き16bit ルートベストスコア
 NM_ROOT_POS:    DEFB 0FFH       ; AIset: 最善手 offset (FFH=未発見)
 EV_POS_DIFF:    DEFW 0          ; EvalLeaf: pos_diff 作業用 (符号付き16bit)
@@ -1295,10 +1311,8 @@ CS_CRN_SKIP:
 ; [AICORE] NegaMax�݋��T�� (RFCT100) ----------------------
 
 ; ---------------------------------------------------------
-; AIset  [Step 6/7 - depth-2/3 切り替え、NegaMax 再帰呼び出し]
-;   POS_ORDER 順に全着手試行。各着手後に NegaMax(opponent) を呼び符号反転。
-;   空き < D3_THRESHOLD → NM_TOTAL_DEPTH=2 (depth-3)
-;   空き >= D3_THRESHOLD → NM_TOTAL_DEPTH=1 (depth-2)
+; AIset  [Step 3/7 - depth-1 固定、EvalLeaf 呼び出し]
+;   POS_ORDER 順に全着手試行 → EvalLeaf 最大スコア手を選択。
 ;   符号付き16bit スコア (NM_SCORE_MIN で初期化)。
 ;   BOARD_SAVE1 で盤面退避/復元。
 ;
@@ -1317,18 +1331,6 @@ AIset:
         LD   (NM_ROOT_POS),A
         XOR  A
         LD   (AS_IDX),A
-        LD   (NM_CALL_DEPTH),A
-
-        ; NM_TOTAL_DEPTH: 空きマス数で depth-2/3 切り替え
-        LD   A,(EMPTY_CACHE)
-        CP   D3_THRESHOLD       ; carry if empty < D3_THRESHOLD
-        JR   C,AS_DEPTH3
-        LD   A,1                ; 空き >= threshold → depth-2 (total=1)
-        JR   AS_SET_DEPTH
-AS_DEPTH3:
-        LD   A,2                ; 空き < threshold → depth-3 (total=2)
-AS_SET_DEPTH:
-        LD   (NM_TOTAL_DEPTH),A
 
         ; 盤面退避 (BOARD_SAVE1)
         LD   HL,BOARD_SAVE1
@@ -1382,14 +1384,9 @@ AS_LOOP:
         LD   D,A
         CALL ApplyMove
 
-        LD   A,(HumSide)
+        LD   A,(AiSide)
         LD   D,A
-        CALL NegaMax            ; HL = score (HumSide視点)
-        ; negate: AiSide視点に変換
-        EX   DE,HL
-        LD   HL,0
-        AND  A
-        SBC  HL,DE              ; HL = -score
+        CALL EvalLeaf           ; HL = score (符号付き16bit)
 
         ; if HL > (NM_ROOT_SCORE): 更新
         LD   A,(NM_ROOT_SCORE)
@@ -1508,443 +1505,64 @@ NGS_D2:
 
 
 ; ---------------------------------------------------------
-; EvalLeaf  [Step 7/7: pos_diff + mob_diff*mob_w + stable_diff*stable_w]
-;   葉ノード評価 (D=side 視点, 正=有利)
+; EvalLeaf  [Step 2/7: pos_diff のみ]
+;   葉ノード評価。64マスを走査し符号付き位置スコア差を返す。
+;   mob / stable はStep 7/7 で追加予定。
 ;
-;   score = pos_diff
-;         + (mob_ai - mob_opp) * mob_w
-;         + (stable_ai - stable_opp) * stable_w
-;
-;   フェーズ (EMPTY_CACHE で判定):
-;     EARLY (>=44): mob_w=12, stable_w=30
-;     MID   (>=12): mob_w=8,  stable_w=50
-;     LATE  (< 12): mob_w=4,  stable_w=30
-;
-; Input:  D = 評価対象 side
-; Output: HL = score (符号付き16bit)
+; Input:  D = 評価対象 side (AI視点: 正=有利)
+; Output: HL = pos_diff (符号付き16bit)
+;            = Sigma(POS_WEIGHT[AI石]) - Sigma(POS_WEIGHT[OPP石])
 ; Destroys: AF, BC, DE, HL, IX, IY
 ; ---------------------------------------------------------
 EvalLeaf:
         LD   A,D
-        LD   (EV_SIDE),A
+        LD   (EV_SIDE),A    ; 評価対象 side を保存
 
-        ; --- pos_diff: 64マス走査 ---
-        LD   HL,0
+        LD   HL,0000H
         LD   (EV_POS_DIFF),HL
-        LD   IX,BOARD
-        LD   IY,POS_WEIGHT
-        LD   B,64
+
+        LD   IX,BOARD       ; IX = BOARD ポインタ
+        LD   IY,POS_WEIGHT  ; IY = POS_WEIGHT ポインタ
+        LD   B,64           ; 64マスループ
+
 EL_LOOP:
+        ; BOARD[i] を読む
         LD   A,(IX+0)
         OR   A
-        JR   Z,EL_NEXT
-        LD   C,A
-        LD   E,(IY+0)
+        JR   Z,EL_NEXT      ; EMPTY → スキップ
+        LD   C,A            ; C = 石の色
+
+        ; POS_WEIGHT[i] を符号付き16bitに拡張 → DE
+        LD   E,(IY+0)       ; E = weight byte (符号付き)
         LD   D,0
         BIT  7,E
         JR   Z,EL_POS
-        LD   D,0FFH
+        LD   D,0FFH         ; 負値: DE = sign-extended
 EL_POS:
+        ; 自石 or 相手石?
         LD   A,(EV_SIDE)
         CP   C
-        JR   NZ,EL_SUB
+        JR   NZ,EL_SUB      ; 相手石 → subtract
+
+        ; 自石: EV_POS_DIFF += weight
         LD   HL,(EV_POS_DIFF)
         ADD  HL,DE
         LD   (EV_POS_DIFF),HL
         JR   EL_NEXT
+
 EL_SUB:
+        ; 相手石: EV_POS_DIFF -= weight
         LD   HL,(EV_POS_DIFF)
-        AND  A
+        AND  A              ; clear carry
         SBC  HL,DE
         LD   (EV_POS_DIFF),HL
+
 EL_NEXT:
         INC  IX
         INC  IY
         DJNZ EL_LOOP
 
-        ; --- mob_diff ---
-        ; mob_ai = CountMobility(EV_SIDE)
-        LD   A,(EV_SIDE)
-        LD   D,A
-        CALL CountMobility      ; A = mob_ai
-        PUSH AF                 ; [sp+1]=mob_ai
-
-        ; mob_opp = CountMobility(opponent)
-        LD   A,(EV_SIDE)
-        LD   D,WHITE
-        CP   WHITE
-        JR   NZ,EL_MOB_OPP
-        LD   D,BLACK
-EL_MOB_OPP:
-        CALL CountMobility      ; A = mob_opp
-        LD   C,A                ; C = mob_opp
-        POP  DE                 ; D = mob_ai
-
-        ; mob_diff = D - C (符号付き8bit → 16bit)
-        LD   A,D
-        SUB  C                  ; A = mob_ai - mob_opp
-        LD   L,A
-        LD   H,0
-        BIT  7,L
-        JR   Z,EL_MOB_SIGNED
-        LD   H,0FFH
-EL_MOB_SIGNED:
-        ; HL = mob_diff。mob_w でスケール
-        LD   A,(EMPTY_CACHE)
-        CP   EARLY_GAME
-        JR   C,EL_MOB_NOT_EARLY
-        ; EARLY: mob_w=12 = *4 + *8
-        ADD  HL,HL              ; *2
-        ADD  HL,HL              ; *4
-        PUSH HL                 ; save *4
-        ADD  HL,HL              ; *8
-        POP  DE
-        ADD  HL,DE              ; *12
-        JR   EL_MOB_ADD
-EL_MOB_NOT_EARLY:
-        CP   MID_GAME
-        JR   C,EL_MOB_LATE
-        ; MID: mob_w=8
-        ADD  HL,HL
-        ADD  HL,HL
-        ADD  HL,HL              ; *8
-        JR   EL_MOB_ADD
-EL_MOB_LATE:
-        ; LATE: mob_w=4
-        ADD  HL,HL
-        ADD  HL,HL              ; *4
-EL_MOB_ADD:
-        ; EV_POS_DIFF += mob_term
-        EX   DE,HL              ; DE = mob_term
         LD   HL,(EV_POS_DIFF)
-        ADD  HL,DE
-        LD   (EV_POS_DIFF),HL
-
-        ; --- stable_diff ---
-        ; stable_ai = CountStable(EV_SIDE)
-        LD   A,(EV_SIDE)
-        LD   D,A
-        CALL CountStable        ; A = stable_ai
-        PUSH AF                 ; [sp+1]=stable_ai
-
-        ; stable_opp = CountStable(opponent)
-        LD   A,(EV_SIDE)
-        LD   D,WHITE
-        CP   WHITE
-        JR   NZ,EL_STABLE_OPP
-        LD   D,BLACK
-EL_STABLE_OPP:
-        CALL CountStable        ; A = stable_opp
-        LD   C,A                ; C = stable_opp
-        POP  DE                 ; D = stable_ai
-
-        ; stable_diff = D - C (符号付き8bit → 16bit)
-        LD   A,D
-        SUB  C
-        LD   L,A
-        LD   H,0
-        BIT  7,L
-        JR   Z,EL_STABLE_SIGNED
-        LD   H,0FFH
-EL_STABLE_SIGNED:
-        ; HL = stable_diff。stable_w でスケール
-        LD   A,(EMPTY_CACHE)
-        CP   EARLY_GAME
-        JR   C,EL_STABLE_NOT_EARLY
-        ; EARLY: stable_w=30 = 32-2
-        ADD  HL,HL              ; *2
-        PUSH HL                 ; save *2
-        ADD  HL,HL
-        ADD  HL,HL
-        ADD  HL,HL
-        ADD  HL,HL              ; *32
-        POP  DE
-        AND  A
-        SBC  HL,DE              ; *30
-        JR   EL_STABLE_ADD
-EL_STABLE_NOT_EARLY:
-        CP   MID_GAME
-        JR   C,EL_STABLE_LATE
-        ; MID: stable_w=50 = 32+16+2
-        ADD  HL,HL              ; *2
-        PUSH HL                 ; save *2
-        ADD  HL,HL
-        ADD  HL,HL
-        ADD  HL,HL              ; *16
-        PUSH HL                 ; save *16
-        ADD  HL,HL              ; *32
-        POP  DE
-        ADD  HL,DE              ; *48
-        POP  DE
-        ADD  HL,DE              ; *50
-        JR   EL_STABLE_ADD
-EL_STABLE_LATE:
-        ; LATE: stable_w=30 (EARLY と同じ)
-        ADD  HL,HL
-        PUSH HL
-        ADD  HL,HL
-        ADD  HL,HL
-        ADD  HL,HL
-        ADD  HL,HL              ; *32
-        POP  DE
-        AND  A
-        SBC  HL,DE              ; *30
-EL_STABLE_ADD:
-        ; total = EV_POS_DIFF + stable_term
-        EX   DE,HL              ; DE = stable_term
-        LD   HL,(EV_POS_DIFF)
-        ADD  HL,DE
-        RET
-
-
-; ---------------------------------------------------------
-; NegaMax  [Step 5/7 - 再帰実装完成]
-;   NM_CALL_DEPTH == NM_TOTAL_DEPTH → leaf: EvalLeaf(D=side) で返す
-;   それ以外 → NM_RECURSE (POS_ORDER ループ + 再帰 + α更新)
-;
-; Input:  D = side to move
-;         (NM_CALL_DEPTH), (NM_TOTAL_DEPTH) 設定済み
-; Output: HL = score (D=side 視点, 符号付き16bit)
-; Destroys: AF,BC,DE,HL,IX,IY
-; ---------------------------------------------------------
-NegaMax:
-        LD   A,(NM_CALL_DEPTH)
-        LD   B,A
-        LD   A,(NM_TOTAL_DEPTH)
-        CP   B                  ; NM_TOTAL_DEPTH == NM_CALL_DEPTH?
-        JR   NZ,NM_RECURSE      ; 残り深さ > 0 → 再帰
-
-        ; remaining == 0 → leaf
-        CALL EvalLeaf
-        RET
-
-; ---------------------------------------------------------
-; NM_RECURSE  [Step 5/7]
-;   POS_ORDER 順に全合法手を試み、再帰 NegaMax の negamax 最大スコアを返す。
-;   合法手なし → EvalLeaf (PASS/terminal 簡易処理)。
-;
-;   per-depth テーブル (NM_CALL_DEPTH でインデックス):
-;     NM_SIDE_TBL[d]  : 手番 side
-;     NM_IDX_TBL[d]   : POS_ORDER ループインデックス (0..63)
-;     NM_HAS_MOVE[d]  : 合法手発見フラグ
-;     NM_ALPHA_TBL[d*2]: best score (符号付き16bit, NM_SCORE_MINで初期化)
-;   盤面退避: NM_GetSaveBuf(NM_CALL_DEPTH) → BOARD_SAVE2/3/...
-; ---------------------------------------------------------
-NM_RECURSE:
-        ; D = side to move
-
-        ; --- 初期化 ---
-        LD   A,(NM_CALL_DEPTH)
-        LD   C,A
-        LD   B,0
-
-        LD   HL,NM_SIDE_TBL     ; NM_SIDE_TBL[depth] = D
-        ADD  HL,BC
-        LD   (HL),D
-
-        LD   HL,NM_IDX_TBL      ; NM_IDX_TBL[depth] = 0
-        ADD  HL,BC
-        LD   (HL),0
-
-        LD   HL,NM_HAS_MOVE     ; NM_HAS_MOVE[depth] = 0
-        ADD  HL,BC
-        LD   (HL),0
-
-        ADD  A,A                ; A = depth * 2
-        LD   C,A
-        LD   HL,NM_ALPHA_TBL    ; NM_ALPHA_TBL[depth] = NM_SCORE_MIN (FF01H)
-        ADD  HL,BC
-        LD   (HL),01H
-        INC  HL
-        LD   (HL),0FFH
-
-        CALL NM_GetSaveBuf      ; 盤面退避
-        CALL SaveBoard
-
-NMR_LOOP:
-        LD   A,(NM_CALL_DEPTH)
-        LD   C,A
-        LD   B,0
-
-        LD   HL,NM_IDX_TBL      ; idx = NM_IDX_TBL[depth]
-        ADD  HL,BC
-        LD   A,(HL)
-        CP   64
-        JP   NC,NMR_END
-
-        LD   HL,POS_ORDER       ; offset = POS_ORDER[idx]
-        LD   C,A
-        ADD  HL,BC
-        LD   A,(HL)             ; A = offset
-
-        ; D = NM_SIDE_TBL[depth] (B,C を offset→row/col 変換前にロード)
-        LD   C,A                ; C = offset (一時退避)
-        LD   A,(NM_CALL_DEPTH)
-        LD   HL,NM_SIDE_TBL
-        LD   E,A
-        LD   D,0
-        ADD  HL,DE
-        LD   D,(HL)             ; D = side
-        LD   A,C                ; A = offset (復元)
-
-        ; offset → B=row, C=col
-        LD   C,A
-        RRCA
-        RRCA
-        RRCA
-        AND  07H
-        LD   B,A
-        LD   A,C
-        AND  07H
-        LD   C,A
-
-        CALL CountAllFlips      ; A = flip count
-        OR   A
-        JP   Z,NMR_NEXT         ; 非合法手 → スキップ
-
-        ; 合法手: has_move[depth] = 1
-        LD   A,(NM_CALL_DEPTH)
-        LD   HL,NM_HAS_MOVE
-        LD   C,A
-        LD   B,0
-        ADD  HL,BC
-        LD   (HL),1
-
-        CALL NM_GetSaveBuf      ; 盤面復元
-        CALL RestoreBoard
-
-        ; offset を NM_IDX_TBL[depth] から再計算
-        LD   A,(NM_CALL_DEPTH)
-        LD   HL,NM_IDX_TBL
-        LD   C,A
-        LD   B,0
-        ADD  HL,BC
-        LD   A,(HL)             ; A = idx
-        LD   HL,POS_ORDER
-        LD   C,A
-        LD   B,0
-        ADD  HL,BC
-        LD   A,(HL)             ; A = offset
-
-        ; offset → B=row, C=col
-        LD   C,A
-        RRCA
-        RRCA
-        RRCA
-        AND  07H
-        LD   B,A
-        LD   A,C
-        AND  07H
-        LD   C,A
-
-        ; D = side を再ロード
-        LD   A,(NM_CALL_DEPTH)
-        LD   HL,NM_SIDE_TBL
-        LD   E,A
-        LD   D,0
-        ADD  HL,DE
-        LD   D,(HL)
-
-        CALL ApplyMove          ; D=side, B=row, C=col
-
-        ; 相手サイドを D に設定
-        LD   A,BLACK
-        CP   D
-        JR   NZ,NMR_OPP_WHITE
-        LD   D,WHITE
-        JR   NMR_DO_RECURSE
-NMR_OPP_WHITE:
-        LD   D,BLACK
-
-NMR_DO_RECURSE:
-        LD   A,(NM_CALL_DEPTH)  ; NM_CALL_DEPTH++ (再帰前)
-        INC  A
-        LD   (NM_CALL_DEPTH),A
-
-        CALL NegaMax            ; HL = score (相手視点)
-
-        LD   A,(NM_CALL_DEPTH)  ; NM_CALL_DEPTH-- (再帰後)
-        DEC  A
-        LD   (NM_CALL_DEPTH),A
-
-        ; 符号反転: HL = -HL (自プレイヤー視点)
-        EX   DE,HL
-        LD   HL,0
-        AND  A
-        SBC  HL,DE
-
-        ; alpha[depth] と比較・更新
-        LD   A,(NM_CALL_DEPTH)
-        ADD  A,A                ; A = depth * 2
-        LD   C,A
-        LD   B,0
-        PUSH HL                 ; [sp] = score
-        LD   HL,NM_ALPHA_TBL
-        ADD  HL,BC              ; HL = &alpha[depth]
-        LD   E,(HL)
-        INC  HL
-        LD   D,(HL)             ; DE = alpha
-        DEC  HL
-        PUSH HL
-        POP  IX                 ; IX = &alpha[depth].lo
-        POP  HL                 ; HL = score
-
-        PUSH HL
-        AND  A
-        SBC  HL,DE              ; score - alpha (flags)
-        POP  HL                 ; HL = score (flags 保持)
-        JP   M,NMR_NO_UPDATE
-        JR   Z,NMR_NO_UPDATE
-        LD   (IX+0),L           ; alpha.lo = score.lo
-        LD   (IX+1),H           ; alpha.hi = score.hi
-
-NMR_NO_UPDATE:
-        CALL NM_GetSaveBuf      ; 次イテレーション用に盤面復元
-        CALL RestoreBoard
-
-NMR_NEXT:
-        LD   A,(NM_CALL_DEPTH)  ; idx[depth]++
-        LD   HL,NM_IDX_TBL
-        LD   C,A
-        LD   B,0
-        ADD  HL,BC
-        INC  (HL)
-        JP   NMR_LOOP
-
-NMR_END:
-        ; 合法手なし → EvalLeaf (PASS/terminal 簡易処理)
-        LD   A,(NM_CALL_DEPTH)
-        LD   HL,NM_HAS_MOVE
-        LD   C,A
-        LD   B,0
-        ADD  HL,BC
-        LD   A,(HL)
-        OR   A
-        JR   NZ,NMR_RETURN
-
-        LD   A,(NM_CALL_DEPTH)
-        LD   HL,NM_SIDE_TBL
-        LD   C,A
-        LD   B,0
-        ADD  HL,BC
-        LD   D,(HL)
-        CALL EvalLeaf
-        RET
-
-NMR_RETURN:
-        ; HL = alpha[depth]
-        LD   A,(NM_CALL_DEPTH)
-        ADD  A,A
-        LD   C,A
-        LD   B,0
-        LD   HL,NM_ALPHA_TBL
-        ADD  HL,BC
-        LD   A,(HL)
-        LD   E,A
-        INC  HL
-        LD   A,(HL)
-        LD   D,A
-        EX   DE,HL              ; HL = alpha[depth]
         RET
 
 
