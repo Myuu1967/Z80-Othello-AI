@@ -1295,8 +1295,10 @@ CS_CRN_SKIP:
 ; [AICORE] NegaMax�݋��T�� (RFCT100) ----------------------
 
 ; ---------------------------------------------------------
-; AIset  [Step 3/7 - depth-1 固定、EvalLeaf 呼び出し]
-;   POS_ORDER 順に全着手試行 → EvalLeaf 最大スコア手を選択。
+; AIset  [Step 6/7 - depth-2/3 切り替え、NegaMax 再帰呼び出し]
+;   POS_ORDER 順に全着手試行。各着手後に NegaMax(opponent) を呼び符号反転。
+;   空き < D3_THRESHOLD → NM_TOTAL_DEPTH=2 (depth-3)
+;   空き >= D3_THRESHOLD → NM_TOTAL_DEPTH=1 (depth-2)
 ;   符号付き16bit スコア (NM_SCORE_MIN で初期化)。
 ;   BOARD_SAVE1 で盤面退避/復元。
 ;
@@ -1315,8 +1317,18 @@ AIset:
         LD   (NM_ROOT_POS),A
         XOR  A
         LD   (AS_IDX),A
-        LD   (NM_TOTAL_DEPTH),A ; depth-1: total=0, call=0
         LD   (NM_CALL_DEPTH),A
+
+        ; NM_TOTAL_DEPTH: 空きマス数で depth-2/3 切り替え
+        LD   A,(EMPTY_CACHE)
+        CP   D3_THRESHOLD       ; carry if empty < D3_THRESHOLD
+        JR   C,AS_DEPTH3
+        LD   A,1                ; 空き >= threshold → depth-2 (total=1)
+        JR   AS_SET_DEPTH
+AS_DEPTH3:
+        LD   A,2                ; 空き < threshold → depth-3 (total=2)
+AS_SET_DEPTH:
+        LD   (NM_TOTAL_DEPTH),A
 
         ; 盤面退避 (BOARD_SAVE1)
         LD   HL,BOARD_SAVE1

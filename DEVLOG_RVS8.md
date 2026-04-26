@@ -2588,6 +2588,39 @@ Step 6/7: AIset で NM_TOTAL_DEPTH=1 (depth-2) / 2 (depth-3) を設定
 
 ---
 
+## RFCT100.ASM Step6/7: AIset depth-2/3 切り替え (2026-04-26)
+
+### 実施内容
+
+| 変更 | 内容 |
+|------|------|
+| AIset コメント | Step 3 → Step 6 更新 |
+| NM_TOTAL_DEPTH 設定 | 固定0 → EMPTY_CACHE と D3_THRESHOLD(=20) で分岐 |
+
+### 切り替えロジック
+
+```asm
+        LD   A,(EMPTY_CACHE)
+        CP   D3_THRESHOLD       ; carry if empty < 20
+        JR   C,AS_DEPTH3
+        LD   A,1                ; 空き >= 20 → depth-2 (TOTAL_DEPTH=1)
+        JR   AS_SET_DEPTH
+AS_DEPTH3:
+        LD   A,2                ; 空き < 20  → depth-3 (TOTAL_DEPTH=2)
+AS_SET_DEPTH:
+        LD   (NM_TOTAL_DEPTH),A
+```
+
+### 動作確認
+
+アセンブル確認後、実機で depth-2/3 動作を確認予定。
+
+### 次のステップ
+
+Step 7/7: EvalLeaf に mob/stable 項追加
+
+---
+
 ## RFCT100.ASM POS_WEIGHT GA_D3更新 (2026-04-26)
 
 ### 実施内容
