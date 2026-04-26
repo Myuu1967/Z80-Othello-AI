@@ -2483,3 +2483,44 @@ LD   D,A
 ### 次のステップ
 
 Step 4/7: NegaMax 最小実装（depth=1 で EvalLeaf 呼び出し）→ AIset から NegaMax を呼ぶ形に変更
+
+---
+
+## RFCT100.ASM Step4/7: NegaMax 最小実装 (2026-04-26)
+
+### 実施内容
+
+| 変更 | 内容 |
+|------|------|
+| AIset 初期化 | `NM_TOTAL_DEPTH=0, NM_CALL_DEPTH=0` 追加（depth-1: 残り深さ=0） |
+| AIset ループ | `CALL EvalLeaf(AiSide)` → `CALL NegaMax(HumSide)` + 符号反転 |
+| NegaMax 追加 | EvalLeaf 直後に新規追加。leaf 判定 + NM_RECURSE stub |
+
+### NegaMax 動作 (Step 4 時点)
+
+```
+NegaMax(D=side):
+  if NM_TOTAL_DEPTH == NM_CALL_DEPTH:  ; remaining == 0
+    return EvalLeaf(D=side)
+  else:
+    [NM_RECURSE - Step 5 で実装、現在は EvalLeaf の仮実装]
+```
+
+### 符号反転（negamax の核心）
+
+```asm
+CALL NegaMax        ; HL = score (HumSide 視点)
+EX   DE,HL
+LD   HL,0
+AND  A
+SBC  HL,DE          ; HL = 0 - DE = -score (AiSide 視点)
+```
+
+### 動作確認
+
+NM_TOTAL_DEPTH=0, NM_CALL_DEPTH=0 のため常に leaf → EvalLeaf。
+Step 3 と動作等価（アセンブル確認のみ）。
+
+### 次のステップ
+
+Step 5/7: NM_RECURSE を本実装（POS_ORDER ループ + 再帰 + α 更新）
