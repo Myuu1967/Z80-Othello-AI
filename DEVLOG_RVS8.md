@@ -2693,3 +2693,48 @@ GA最適化（depth-3, 30世代, 約208分）の優勝テーブルを RFCT100.AS
 - corner=66（V2=120より低め）、edge_ctr=+44（大幅上昇）
 - x_sq=-45（強く禁止）、center=-29（中央を強く嫌う）
 - near_x=+22（V2=-5から逆転、正値）
+
+---
+
+## GA_D2 signed 最適化計画 (2026-04-26)
+
+### 背景
+
+GA_D3 優勝値（depth-3 最適化）を RFCT100 の depth-2 フェーズにも使用しているが、
+評価関数は探索深さに依存するため、depth-2 専用の signed 重みが存在する可能性がある。
+
+**深さと評価関数の関係:**
+- depth-3 は 3 手先まで読めるため、静的評価が荒くても補正できる
+- depth-2 は 2 手分の情報を 1 つのスコアで表現する必要がある
+- 実際に GA_D2（正値のみ）は corner=128 と高く、GA_D3 は corner=66 と低い
+  → 深さが増すと「角は自然に取れる」ので評価で高くしなくてよい
+
+### 実施内容
+
+`optimize_weights_d2signed.py` を新規作成。
+
+| 項目 | GA_D3（前回） | GA_D2signed（今回） |
+|------|--------------|---------------------|
+| `DEPTH` | 3 | **2** |
+| `RANDOM_SEED` | 42 | 123 |
+| 初期集団 | V2 + GA_D2 + randoms | V2 + GA_D2 + **GA_D3** + randoms |
+| 殿堂初期値 | V2 のみ | V2 + GA_D2 + GA_D3 |
+| 比較表 | V2/GA_D2/V1 | V2/GA_D2/**GA_D3**/V1 |
+
+### 期待所要時間
+
+depth-2 は depth-3 より高速なため 30 世代 + トーナメントで **70〜100 分**見込み。
+（GA_D3 実績: 208 分）
+
+### 実行コマンド
+
+```
+cd F:\ClaudeCode\Z80-Othello\python
+python optimize_weights_d2signed.py > ga_d2signed_result.txt 2>&1
+```
+
+### 結果の活用方針
+
+- GA_D2signed 優勝 > GA_D3 (depth-2 対戦): depth-2 フェーズ用に差し替え検討
+- GA_D2signed 優勝 ≦ GA_D3 (depth-2 対戦): GA_D3 のまま維持
+- RFCT100 は depth-2/3 で同一テーブルを使用。将来的にフェーズ別テーブルも選択肢。
