@@ -110,7 +110,7 @@ D3_THRESHOLD EQU 20         ; 空き < 20 → depth-3 / 空き >= 20 → depth-2
 MOB_STABLE_CAP_EARLY EQU 1872   ; 96×12 + 24×30 (序盤: mob_w=12, stable_w=30)
 MOB_STABLE_CAP_MID   EQU 1968   ; 96×8  + 24×50 (中盤: mob_w=8,  stable_w=50)
 MOB_STABLE_CAP_LATE  EQU 1104   ; 96×4  + 24×30 (終盤: mob_w=4,  stable_w=30)
-OBS_SCORE_MAX        EQU  192   ; POS_WEIGHT_MAX(128) + FLIPS_MAX(64)
+OBS_SCORE_MAX        EQU  130   ; POS_WEIGHT_MAX(66) + FLIPS_MAX(64)
 
 ; NegaMax スコア定数
 NM_SCORE_MIN    EQU  0FF01H ; -255 (初期 alpha 値, 符号付き 16bit)
@@ -167,74 +167,56 @@ STONE_CHAR:
 ; ---------------------------------------------------------
 ; POS_WEIGHT  (64 bytes, row-major 8x8)
 ;
-;   GA最適化テーブル (2026-04-22, depth-2 AI同士 50世代)
-;   Corner=128, X-sq=1(禁止), C-sq=3, near_x=36, center=1
-;   max score = 128 + 64 flips = 192 < 256 (byte-safe)
+;   GA最適化テーブル (2026-04-26, depth-3 AI同士 30世代, GA_D3優勝)
+;   符号付きバイト。DEFB の負値はアセンブラが2の補数に変換する。
+;   sign-ext して 16bit 加減算に使う。
 ;
-;   マス分類:
-;     角  (A1/H1/A8/H8)        : 128
-;     Xマス(B2/G2/B7/G7)       :   1  ← 角を相手に渡す最悪手
-;     Cマス(B1/A2/G1/H2 etc.)  :   3  ← 角隣、相手に角を渡しやすい
-;     near_x(C2/B3 etc.)       :  36  ← GA最適化で高評価
-;     辺(C1/A3 etc.)           :  17
-;     辺中央(D1/A4 etc.)       :  30
-;     内側辺寄り(D2/B4 etc.)   :  15
-;     内側(C3 etc.)            :  18
-;     inner2(D3/C4 etc.)       :  29
-;     中央(D4 etc.)            :   1  ← GA最適化で低評価
+;   マス分類 (GA_D3):
+;     corner   (A1/H1/A8/H8)      :  +66
+;     edge_ctr (D1/A4 etc.)       :  +44 ← 辺中央を重視
+;     inner2   (D3/C4 etc.)       :  +23
+;     near_x   (C2/B3 etc.)       :  +22 ← V2より大幅上昇
+;     inner    (C3 etc.)          :  +10
+;     inner_edge(D2/B4 etc.)      :   +1
+;     edge_near(C1/A3 etc.)       :   -1
+;     center   (D4 etc.)          :  -29 ← 中央を強く嫌う
+;     c_sq     (B1/A2 etc.)       :  -32
+;     x_sq     (B2/G2 etc.)       :  -45 ← 強く禁止
 ; ---------------------------------------------------------
-; [WEIGHT] 位置評価テーブル (符号付きバイト, V2ベース) -------
-;
-;   符号付き値: 正=有利マス / 負=不利マス
-;   DEFB の負値はアセンブラが 2の補数に変換する
-;   sign-ext して 16bit 加減算に使う
-;
-;   マス分類 (V2):
-;     角  (A1/H1/A8/H8)         : +120
-;     Xマス(B2/G2/B7/G7)        :  -40 ← 角を渡す最悪手
-;     Cマス(B1/A2/G1/H2 etc.)   :  -20 ← 角隣
-;     near_x(C2/B3 etc.)        :   -5
-;     辺(C1/A3 etc.)            :  +20
-;     辺中央(D1/A4 etc.)        :  +10
-;     内側辺寄り(D2/B4 etc.)    :   +1
-;     内側(C3 etc.)             :  +15
-;     inner2(D3/C4 etc.)        :   +5
-;     中央(D4 etc.)             :   +3
-;
 POS_WEIGHT:
         ;       A    B    C    D    E    F    G    H
-        DEFB  120, -20,  20,  10,  10,  20, -20, 120  ; 1
-        DEFB  -20, -40,  -5,   1,   1,  -5, -40, -20  ; 2
-        DEFB   20,  -5,  15,   5,   5,  15,  -5,  20  ; 3
-        DEFB   10,   1,   5,   3,   3,   5,   1,  10  ; 4
-        DEFB   10,   1,   5,   3,   3,   5,   1,  10  ; 5
-        DEFB   20,  -5,  15,   5,   5,  15,  -5,  20  ; 6
-        DEFB  -20, -40,  -5,   1,   1,  -5, -40, -20  ; 7
-        DEFB  120, -20,  20,  10,  10,  20, -20, 120  ; 8
+        DEFB   66, -32,  -1,  44,  44,  -1, -32,  66  ; 1
+        DEFB  -32, -45,  22,   1,   1,  22, -45, -32  ; 2
+        DEFB   -1,  22,  10,  23,  23,  10,  22,  -1  ; 3
+        DEFB   44,   1,  23, -29, -29,  23,   1,  44  ; 4
+        DEFB   44,   1,  23, -29, -29,  23,   1,  44  ; 5
+        DEFB   -1,  22,  10,  23,  23,  10,  22,  -1  ; 6
+        DEFB  -32, -45,  22,   1,   1,  22, -45, -32  ; 7
+        DEFB   66, -32,  -1,  44,  44,  -1, -32,  66  ; 8
 
 ; [WEIGHT] ムーブオーダリング用: POS_WEIGHT降順のマスoffset一覧 (64バイト)
 ; offset = row*8 + col  (row=0..7, col=0..7)
-; V2 重み降順: 120, 20, 15, 10, 5, 3, 1, -5, -20, -40
+; GA_D3 重み降順: 66, 44, 23, 22, 10, 1, -1, -29, -32, -45
 POS_ORDER:
-        ; weight=120: コーナー
+        ; weight=66: corner
         DEFB  0,  7, 56, 63
-        ; weight=20: 辺 (C1/A3 etc.)
-        DEFB  2,  5, 58, 61, 16, 23, 40, 47
-        ; weight=15: inner (C3 etc.)
+        ; weight=44: edge_ctr (D1/A4 etc.)
+        DEFB  3,  4, 24, 31, 32, 39, 59, 60
+        ; weight=23: inner2 (D3/C4 etc.)
+        DEFB 19, 20, 26, 29, 34, 37, 43, 44
+        ; weight=22: near_x (C2/B3 etc.)
+        DEFB 10, 13, 17, 22, 41, 46, 50, 53
+        ; weight=10: inner (C3 etc.)
         DEFB 18, 21, 42, 45
-        ; weight=10: 辺中央 (D1/A4 etc.)
-        DEFB  3,  4, 59, 60, 24, 31, 32, 39
-        ; weight=5: inner2 (D3/C4 etc.)
-        DEFB 19, 20, 43, 44, 26, 29, 34, 37
-        ; weight=3: 中央 (D4 etc.)
+        ; weight=1: inner_edge (D2/B4 etc.)
+        DEFB 11, 12, 25, 30, 33, 38, 51, 52
+        ; weight=-1: edge_near (C1/A3 etc.)
+        DEFB  2,  5, 16, 23, 40, 47, 58, 61
+        ; weight=-29: center (D4 etc.)
         DEFB 27, 28, 35, 36
-        ; weight=1: 辺内側 (D2/B4 etc.)
-        DEFB 11, 12, 51, 52, 25, 30, 33, 38
-        ; weight=-5: near_x (C2/B3 etc.)
-        DEFB 10, 13, 50, 53, 17, 22, 41, 46
-        ; weight=-20: Cマス (B1/A2 etc.)
-        DEFB  1,  6, 57, 62,  8, 15, 48, 55
-        ; weight=-40: Xマス (B2/G2 etc.)
+        ; weight=-32: c_sq (B1/A2 etc.)
+        DEFB  1,  6,  8, 15, 48, 55, 57, 62
+        ; weight=-45: x_sq (B2/G2 etc.)
         DEFB  9, 14, 49, 54
 
 ; [WEIGHT] 安定石コーナーテーブル (3バイト x 4コーナー)
@@ -330,6 +312,8 @@ NM_TOTAL_DEPTH: DEFB 0          ; 総探索深さ (2 or 3)
 NM_CALL_DEPTH:  DEFB 0          ; 現在の再帰深さ (0=AIset直下)
 NM_ALPHA_TBL:   DEFS 8          ; alpha[depth] 符号付き16bit x 4 (depth 0..3)
 NM_HAS_MOVE:    DEFS 4          ; 合法手発見フラグ (depth 0..3, 0=未発見 / 1=発見)
+NM_IDX_TBL:     DEFS 4          ; ループインデックス per depth (0..3)
+NM_SIDE_TBL:    DEFS 4          ; 手番 side per depth (0..3)
 NM_ROOT_SCORE:  DEFW 0          ; AIset: 符号付き16bit ルートベストスコア
 NM_ROOT_POS:    DEFB 0FFH       ; AIset: 最善手 offset (FFH=未発見)
 EV_POS_DIFF:    DEFW 0          ; EvalLeaf: pos_diff 作業用 (符号付き16bit)
