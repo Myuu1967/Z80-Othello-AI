@@ -2840,7 +2840,38 @@ V2 重みの全マス合計は約 +480 なので、理論的な最低スコア�
 `PrintDec4` は 0〜9999 のみ対応。負値の `NM_ROOT_SCORE` を渡すと文字化けする。
 AI が劣勢局面では Eval 表示が崩れる。→ 符号付き対応は後回し。
 
+### NM_SCORE_MIN 再修正 (0x8001 → 0xFE00)
+
+0x8001 (-32767) は正値スコアとの比較でオーバーフローが発生することが判明。
+
+```
+SBC HL,DE  ; HL = score - best
+JP M,...   ; 符号ビットで判定
+```
+
+`score - NM_SCORE_MIN` が 32767 を超えると符号ビットが誤って立ち、正値スコアもスキップされる。
+
+例: score=16, best=-32767 → 16-(-32767)=32783=0x800F → 符号ビット=1 → 誤スキップ
+
+**正しい NM_SCORE_MIN の範囲：**
+- V2 全重み合計 = ±480 → min score ≈ -480
+- NM_SCORE_MIN < -480（全合法手が必ず初期値を上回る）
+- NM_SCORE_MIN > -32287（比較オーバーフロー防止: score_max - NM_SCORE_MIN ≤ 32767）
+
+→ `0xFE00H = -512` に再設定。
+
+### PrintSigned 追加（負評価値の表示対応）
+
+`PrintDec4` は符号なし (0〜9999) 専用だったため、負の `NM_ROOT_SCORE` を渡すと文字化け。
+
+`PrintSigned` を新規追加：
+1. 符号ビット確認 (`BIT 7,H`)
+2. 負なら `'-'` 出力 → 2の補数で絶対値化 (`SBC HL,DE` with HL=0)
+3. `PrintDec4` を呼び出し
+
+Eval 出力を `CALL PrintDec4` → `CALL PrintSigned` に差し替え。
+
 ### 次のステップ
 
-Step4（NM_SCORE_MIN 修正済み）をアセンブル → 実機確認。
+Step4（NM_SCORE_MIN = -512, PrintSigned 対応済み）をアセンブル → 実機確認。
 正常動作確認後に Step5（NM_RECURSE 本実装）へ進む。
