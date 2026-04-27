@@ -27,7 +27,7 @@
 ;   pos_diff:    Sigma(POS_WEIGHT[AI石]) - Sigma(POS_WEIGHT[OPP石])
 ;   mob_diff:    (AI合法手数 - OPP合法手数) x mob_w
 ;   stable_diff: (AI安定石 - OPP安定石) x stable_w
-;   NM_SCORE_MIN = 0F800H (-2048): 初期 alpha 値 (GA_D2signed 最大|score|=1168 以下)
+;   NM_SCORE_MIN = 0F000H (-4096): 初期 alpha 値 (mob/stable込み max|score|=2608 をカバー)
 ;
 ; α-β 枝刈り:
 ;   NM_ALPHA_TBL[d] = depth d の現在ベスト (alpha)
@@ -121,7 +121,7 @@ MOB_STABLE_CAP_LATE  EQU 1104   ; 96×4  + 24×30 (終盤: mob_w=4,  stable_w=30
 OBS_SCORE_MAX        EQU  130   ; POS_WEIGHT_MAX(66) + FLIPS_MAX(64)
 
 ; NegaMax スコア定数
-NM_SCORE_MIN    EQU  0F800H ; -2048 (GA_D2signed |score|max=1168, 1168-(-2048)=3216<32767)
+NM_SCORE_MIN    EQU  0F000H ; -4096 (mob/stable追加後 max|score|=2608, 2608-(-4096)=6704<32767)
 
 
 ; =========================================================
@@ -1775,11 +1775,11 @@ NM_RECURSE:
 
         ADD  A,A                ; A = depth * 2
         LD   C,A
-        LD   HL,NM_ALPHA_TBL    ; NM_ALPHA_TBL[depth] = NM_SCORE_MIN (F800H = -2048)
+        LD   HL,NM_ALPHA_TBL    ; NM_ALPHA_TBL[depth] = NM_SCORE_MIN (F000H = -4096)
         ADD  HL,BC
         LD   (HL),00H           ; lo = 00H
         INC  HL
-        LD   (HL),0F8H          ; hi = F8H
+        LD   (HL),0F0H          ; hi = F0H
 
         CALL NM_GetSaveBuf      ; 盤面退避
         CALL SaveBoard
