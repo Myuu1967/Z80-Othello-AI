@@ -113,7 +113,7 @@ MOB_STABLE_CAP_LATE  EQU 1104   ; 96×4  + 24×30 (終盤: mob_w=4,  stable_w=30
 OBS_SCORE_MAX        EQU  192   ; POS_WEIGHT_MAX(128) + FLIPS_MAX(64)
 
 ; NegaMax スコア定数
-NM_SCORE_MIN    EQU  08001H ; -32767 (-INF 相当、どんな局面でも初期値より大きい)
+NM_SCORE_MIN    EQU  0FE00H ; -512 (V2全重み合計±480より低く、比較オーバーフローしない範囲)
 
 
 ; =========================================================
@@ -1465,7 +1465,7 @@ AS_END:
         LD   DE,MSG_EVAL
         CALL PrintString
         LD   HL,(NM_ROOT_SCORE)
-        CALL PrintDec4
+        CALL PrintSigned
         CALL NEWLINE
         RET
 
@@ -2409,6 +2409,24 @@ PD4_DRem:
         LD   A,C
         ADD  A,'0'
         CALL PutChar
+        RET
+
+; PrintSigned  符号付き16bit を10進で出力 ('-' + PrintDec4)
+; Input:  HL = 符号付き16bit値 (範囲: 約 -9999..9999)
+; Destroys: AF,BC,DE,HL
+; ---------------------------------------------------------
+PrintSigned:
+        BIT  7,H             ; 符号ビット確認
+        JR   Z,PS_POS        ; 正値 → そのまま
+        LD   A,'-'
+        CALL PutChar
+        ; negate: HL = -HL (2の補数)
+        EX   DE,HL
+        LD   HL,0
+        AND  A               ; carry クリア
+        SBC  HL,DE           ; HL = -original
+PS_POS:
+        CALL PrintDec4
         RET
 
 PrintCounts:
