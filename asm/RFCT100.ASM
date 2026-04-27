@@ -113,7 +113,7 @@ MOB_STABLE_CAP_LATE  EQU 1104   ; 96×4  + 24×30 (終盤: mob_w=4,  stable_w=30
 OBS_SCORE_MAX        EQU  192   ; POS_WEIGHT_MAX(128) + FLIPS_MAX(64)
 
 ; NegaMax スコア定数
-NM_SCORE_MIN    EQU  0FF01H ; -255 (初期 alpha 値, 符号付き 16bit)
+NM_SCORE_MIN    EQU  08001H ; -32767 (-INF 相当、どんな局面でも初期値より大きい)
 
 
 ; =========================================================
@@ -1331,6 +1331,8 @@ AIset:
         LD   (NM_ROOT_POS),A
         XOR  A
         LD   (AS_IDX),A
+        LD   (NM_TOTAL_DEPTH),A ; depth-1: total=0, call=0
+        LD   (NM_CALL_DEPTH),A
 
         ; 盤面退避 (BOARD_SAVE1)
         LD   HL,BOARD_SAVE1
@@ -1384,9 +1386,14 @@ AS_LOOP:
         LD   D,A
         CALL ApplyMove
 
-        LD   A,(AiSide)
+        LD   A,(HumSide)
         LD   D,A
-        CALL EvalLeaf           ; HL = score (符号付き16bit)
+        CALL NegaMax            ; HL = score (HumSide視点)
+        ; negate: AiSide視点に変換
+        EX   DE,HL
+        LD   HL,0
+        AND  A
+        SBC  HL,DE              ; HL = -score
 
         ; if HL > (NM_ROOT_SCORE): 更新
         LD   A,(NM_ROOT_SCORE)
@@ -1563,6 +1570,33 @@ EL_NEXT:
         DJNZ EL_LOOP
 
         LD   HL,(EV_POS_DIFF)
+        RET
+
+
+; ---------------------------------------------------------
+; NegaMax  [Step 4/7 - depth check + EvalLeaf、再帰は Step 5 で追加]
+;   NM_CALL_DEPTH == NM_TOTAL_DEPTH → leaf: EvalLeaf(D=side) で返す
+;   それ以外 → NM_RECURSE (Step 5 で実装)
+;
+; Input:  D = side to move
+;         (NM_CALL_DEPTH), (NM_TOTAL_DEPTH) 設定済み
+; Output: HL = score (D=side 視点, 符号付き16bit)
+; Destroys: AF,BC,DE,HL,IX,IY
+; ---------------------------------------------------------
+NegaMax:
+        LD   A,(NM_CALL_DEPTH)
+        LD   B,A
+        LD   A,(NM_TOTAL_DEPTH)
+        CP   B                  ; total_depth - call_depth
+        JR   NZ,NM_RECURSE      ; 残り深さ > 0 → 再帰 (Step 5)
+
+        ; remaining == 0 → leaf
+        CALL EvalLeaf
+        RET
+
+NM_RECURSE:
+        ; [Step 5 で NegaMax ループ実装]
+        CALL EvalLeaf
         RET
 
 
