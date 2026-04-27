@@ -2898,3 +2898,43 @@ Eval 出力を `CALL PrintDec4` → `CALL PrintSigned` に差し替え。
 
 Step4（NM_SCORE_MIN = -512, PrintSigned 対応済み）をアセンブル → 実機確認。
 正常動作確認後に Step5（NM_RECURSE 本実装）へ進む。
+
+---
+
+## RFCT100.ASM Step7/7: EvalLeaf mob/stable 追加 (2026-04-27)
+
+### 背景
+
+実機確認で pos_diff のみ（Step2）の EvalLeaf では評価が正しく機能しないことが判明。
+- コーナーを誘い取りされる / 辺を取った直後に隣接する悪手を打つなど典型的な劣悪手が頻発
+- GA_D2signed テーブルはモビリティ・安定石を含む Python 評価関数で最適化されており、
+  pos_diff 単独で動かしても重みが意図通りに機能しない
+
+### 実装内容
+
+EvalLeaf を pos_diff のみ → 3項評価に拡張。
+
+```
+score = pos_diff
+      + (mob_ai - mob_opp) × mob_w
+      + (stable_ai - stable_opp) × stable_w
+```
+
+| フェーズ (EMPTY_CACHE) | mob_w | stable_w |
+|----------------------|-------|----------|
+| EARLY (>= 44)        | 12    | 30       |
+| MID   (>= 12)        | 8     | 50       |
+| LATE  (<  12)        | 4     | 30       |
+
+### 実装ポイント
+
+- mob_ai/stable_ai 保存: `PUSH AF` → 2回目の CountMobility/CountStable 後に `POP DE` で D=mob_ai
+- ×12 = ×8 + ×4 (PUSH/POP を使って 2段シフトを合算)
+- ×30 = ×32 - ×2 (SBC HL,DE)
+- ×50 = ×32 + ×16 + ×2 (PUSH ×2/PUSH ×16/×32/POP×16+ADD/POP×2+ADD)
+- GAME_PHASE 変数は未設定のため EMPTY_CACHE を直接参照して判定
+- PUSH/POP バランス: mob×12・stable×50 いずれも全パスでスタック平衡
+
+### 次のステップ
+
+アセンブル → 実機確認 (depth-2/3 動作・処理時間・評価値の妥当性)
