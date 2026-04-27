@@ -27,7 +27,7 @@
 ;   pos_diff:    Sigma(POS_WEIGHT[AI石]) - Sigma(POS_WEIGHT[OPP石])
 ;   mob_diff:    (AI合法手数 - OPP合法手数) x mob_w
 ;   stable_diff: (AI安定石 - OPP安定石) x stable_w
-;   NM_SCORE_MIN = 0FF01H (-255) : 初期 alpha 値
+;   NM_SCORE_MIN = 0F800H (-2048): 初期 alpha 値 (GA_D2signed 最大|score|=1168 以下)
 ;
 ; α-β 枝刈り:
 ;   NM_ALPHA_TBL[d] = depth d の現在ベスト (alpha)
@@ -41,6 +41,11 @@
 ;   - 変数置換: NM_TOTAL_DEPTH/NM_CALL_DEPTH/NM_ALPHA_TBL 等追加
 ;   - POS_WEIGHT → 符号付き V2 値
 ;   - POS_ORDER  → V2 重み降順に更新
+; Apr 27th, 2026 RFCT100 Step6/7: AIset depth-2/3 切替 + 重みテーブル D2/D3 切替
+;   - NM_SCORE_MIN: -512 → -2048 (GA_D2signed 最大|score|=1168 に対応)
+;   - POS_WEIGHT_D3 / POS_WEIGHT_D2 両テーブル追加、EQU エイリアスで切替
+;   - POS_ORDER_D3  / POS_ORDER_D2  両テーブル追加、EQU エイリアスで切替
+;   - AIset: depth-1 固定 → 空きマス数 < D3_THRESHOLD で depth-3 / else depth-2
 ; =========================================================
 
         ORG 8000H
@@ -113,7 +118,7 @@ MOB_STABLE_CAP_LATE  EQU 1104   ; 96×4  + 24×30 (終盤: mob_w=4,  stable_w=30
 OBS_SCORE_MAX        EQU  130   ; POS_WEIGHT_MAX(66) + FLIPS_MAX(64)
 
 ; NegaMax スコア定数
-NM_SCORE_MIN    EQU  0FE00H ; -512 (V2/GA_D3全重み合計±480より低く、比較オーバーフローしない範囲)
+NM_SCORE_MIN    EQU  0F800H ; -2048 (GA_D2signed |score|max=1168, 1168-(-2048)=3216<32767)
 
 
 ; =========================================================
@@ -165,25 +170,17 @@ STONE_CHAR:
         DEFB '.', 'X', 'O'
 
 ; ---------------------------------------------------------
-; POS_WEIGHT  (64 bytes, row-major 8x8)
-;
-;   GA最適化テーブル (2026-04-26, depth-3 AI同士 30世代, GA_D3優勝)
+; 位置重みテーブル  (各64 bytes, row-major 8x8)
 ;   符号付きバイト。DEFB の負値はアセンブラが2の補数に変換する。
 ;   sign-ext して 16bit 加減算に使う。
 ;
-;   マス分類 (GA_D3):
-;     corner   (A1/H1/A8/H8)      :  +66
-;     edge_ctr (D1/A4 etc.)       :  +44 ← 辺中央を重視
-;     inner2   (D3/C4 etc.)       :  +23
-;     near_x   (C2/B3 etc.)       :  +22 ← V2より大幅上昇
-;     inner    (C3 etc.)          :  +10
-;     inner_edge(D2/B4 etc.)      :   +1
-;     edge_near(C1/A3 etc.)       :   -1
-;     center   (D4 etc.)          :  -29 ← 中央を強く嫌う
-;     c_sq     (B1/A2 etc.)       :  -32
-;     x_sq     (B2/G2 etc.)       :  -45 ← 強く禁止
+; 切替: 下部の EQU エイリアスを _D2 or _D3 に変更するだけ。
 ; ---------------------------------------------------------
-POS_WEIGHT:
+
+; --- GA_D3優勝テーブル (depth-3 AI同士 30世代, 2026-04-26) ---
+;   corner=66, edge_ctr=44, inner2=23, near_x=22, inner=10
+;   inner_edge=1, edge_near=-1, center=-29, c_sq=-32, x_sq=-45
+POS_WEIGHT_D3:
         ;       A    B    C    D    E    F    G    H
         DEFB   66, -32,  -1,  44,  44,  -1, -32,  66  ; 1
         DEFB  -32, -45,  22,   1,   1,  22, -45, -32  ; 2
@@ -194,10 +191,25 @@ POS_WEIGHT:
         DEFB  -32, -45,  22,   1,   1,  22, -45, -32  ; 7
         DEFB   66, -32,  -1,  44,  44,  -1, -32,  66  ; 8
 
-; [WEIGHT] ムーブオーダリング用: POS_WEIGHT降順のマスoffset一覧 (64バイト)
+; --- GA_D2signed優勝テーブル (depth-2 signed tournament 1位, 2026-04-27) ---
+;   corner=114, x_sq=-54, c_sq=-5, near_x=-16, edge_ctr=-7
+;   inner_edge=7, inner=6, inner2=2, center=-12, edge_near=-16
+POS_WEIGHT_D2:
+        ;       A    B    C    D    E    F    G    H
+        DEFB  114,  -5, -16,  -7,  -7, -16,  -5, 114  ; 1
+        DEFB   -5, -54, -16,   7,   7, -16, -54,  -5  ; 2
+        DEFB  -16, -16,   6,   2,   2,   6, -16, -16  ; 3
+        DEFB   -7,   7,   2, -12, -12,   2,   7,  -7  ; 4
+        DEFB   -7,   7,   2, -12, -12,   2,   7,  -7  ; 5
+        DEFB  -16, -16,   6,   2,   2,   6, -16, -16  ; 6
+        DEFB   -5, -54, -16,   7,   7, -16, -54,  -5  ; 7
+        DEFB  114,  -5, -16,  -7,  -7, -16,  -5, 114  ; 8
+
+; --- ムーブオーダリング用: POS_WEIGHT降順のマスoffset一覧 (各64バイト) ---
 ; offset = row*8 + col  (row=0..7, col=0..7)
-; GA_D3 重み降順: 66, 44, 23, 22, 10, 1, -1, -29, -32, -45
-POS_ORDER:
+
+; GA_D3 重み降順: 66,44,23,22,10,1,-1,-29,-32,-45
+POS_ORDER_D3:
         ; weight=66: corner
         DEFB  0,  7, 56, 63
         ; weight=44: edge_ctr (D1/A4 etc.)
@@ -218,6 +230,31 @@ POS_ORDER:
         DEFB  1,  6,  8, 15, 48, 55, 57, 62
         ; weight=-45: x_sq (B2/G2 etc.)
         DEFB  9, 14, 49, 54
+
+; GA_D2signed 重み降順: 114,7,6,2,-5,-7,-12,-16,-54
+POS_ORDER_D2:
+        ; weight=114: corner
+        DEFB  0,  7, 56, 63
+        ; weight=7: inner_edge (D2/E2/B4/G4 etc.)
+        DEFB 11, 12, 25, 30, 33, 38, 51, 52
+        ; weight=6: inner (C3/F3/C6/F6)
+        DEFB 18, 21, 42, 45
+        ; weight=2: inner2 (D3/E3/C4/F4 etc.)
+        DEFB 19, 20, 26, 29, 34, 37, 43, 44
+        ; weight=-5: c_sq (B1/G1/A2/H2 etc.)
+        DEFB  1,  6,  8, 15, 48, 55, 57, 62
+        ; weight=-7: edge_ctr (D1/E1/A4/H4 etc.)
+        DEFB  3,  4, 24, 31, 32, 39, 59, 60
+        ; weight=-12: center (D4/E4/D5/E5)
+        DEFB 27, 28, 35, 36
+        ; weight=-16: edge_near/near_x (C1/F1/C2/F2/A3..H3/A6..H6/C7/F7/C8/F8)
+        DEFB  2,  5, 10, 13, 16, 17, 22, 23, 40, 41, 46, 47, 50, 53, 58, 61
+        ; weight=-54: x_sq (B2/G2/B7/G7)
+        DEFB  9, 14, 49, 54
+
+; --- D2/D3 切替エイリアス: 以下の1行を変えるだけで切替 ---
+POS_WEIGHT EQU POS_WEIGHT_D2   ; → _D3 で GA_D3テーブルに切替
+POS_ORDER  EQU POS_ORDER_D2    ; → _D3 で GA_D3テーブルに切替
 
 ; [WEIGHT] 安定石コーナーテーブル (3バイト x 4コーナー)
 ; 各エントリ: offset, dc(列方向 +1/FFH), dr(行方向 +1/FFH)
@@ -1295,9 +1332,10 @@ CS_CRN_SKIP:
 ; [AICORE] NegaMax�݋��T�� (RFCT100) ----------------------
 
 ; ---------------------------------------------------------
-; AIset  [Step 3/7 - depth-1 固定、EvalLeaf 呼び出し]
-;   POS_ORDER 順に全着手試行 → EvalLeaf 最大スコア手を選択。
-;   符号付き16bit スコア (NM_SCORE_MIN で初期化)。
+; AIset  [Step 6/7 - depth-2/3 切替、NegaMax 再帰呼び出し]
+;   空きマス数 < D3_THRESHOLD → depth-3 (NM_TOTAL_DEPTH=2)
+;   空きマス数 >= D3_THRESHOLD → depth-2 (NM_TOTAL_DEPTH=1)
+;   POS_ORDER 順に全着手試行 → NegaMax 最大スコア手を選択。
 ;   BOARD_SAVE1 で盤面退避/復元。
 ;
 ; Variables: AS_IDX, AS_OFFSET, NM_ROOT_SCORE, NM_ROOT_POS
@@ -1315,8 +1353,18 @@ AIset:
         LD   (NM_ROOT_POS),A
         XOR  A
         LD   (AS_IDX),A
-        LD   (NM_TOTAL_DEPTH),A ; depth-1: total=0, call=0
         LD   (NM_CALL_DEPTH),A
+
+        ; depth 選択: 空きマス数 < D3_THRESHOLD → depth-3, else depth-2
+        LD   A,(EMPTY_CACHE)
+        CP   D3_THRESHOLD
+        JR   NC,AS_DEPTH2
+        LD   A,2                ; depth-3: NM_TOTAL_DEPTH=2
+        JR   AS_SET_DEPTH
+AS_DEPTH2:
+        LD   A,1                ; depth-2: NM_TOTAL_DEPTH=1
+AS_SET_DEPTH:
+        LD   (NM_TOTAL_DEPTH),A
 
         ; 盤面退避 (BOARD_SAVE1)
         LD   HL,BOARD_SAVE1
@@ -1612,11 +1660,11 @@ NM_RECURSE:
 
         ADD  A,A                ; A = depth * 2
         LD   C,A
-        LD   HL,NM_ALPHA_TBL    ; NM_ALPHA_TBL[depth] = NM_SCORE_MIN (FE00H = -512)
+        LD   HL,NM_ALPHA_TBL    ; NM_ALPHA_TBL[depth] = NM_SCORE_MIN (F800H = -2048)
         ADD  HL,BC
         LD   (HL),00H           ; lo = 00H
         INC  HL
-        LD   (HL),0FEH          ; hi = FEH
+        LD   (HL),0F8H          ; hi = F8H
 
         CALL NM_GetSaveBuf      ; 盤面退避
         CALL SaveBoard

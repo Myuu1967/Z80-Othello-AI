@@ -2588,7 +2588,7 @@ Step 6/7: AIset で NM_TOTAL_DEPTH=1 (depth-2) / 2 (depth-3) を設定
 
 ---
 
-## RFCT100.ASM Step6/7: AIset depth-2/3 切り替え (2026-04-26)
+## RFCT100.ASM Step6/7: AIset depth-2/3 切り替え + 重みテーブル D2/D3 切替 (2026-04-27)
 
 ### 実施内容
 
@@ -2596,24 +2596,47 @@ Step 6/7: AIset で NM_TOTAL_DEPTH=1 (depth-2) / 2 (depth-3) を設定
 |------|------|
 | AIset コメント | Step 3 → Step 6 更新 |
 | NM_TOTAL_DEPTH 設定 | 固定0 → EMPTY_CACHE と D3_THRESHOLD(=20) で分岐 |
+| NM_SCORE_MIN | -512 (0xFE00) → -2048 (0xF800)。GA_D2signed の最大絶対値±1168 に対応。比較オーバーフロー確認: 1168-(-2048)=3216 < 32767 ✓ |
+| POS_WEIGHT_D3 | 旧 POS_WEIGHT ラベルをリネーム。データ変更なし |
+| POS_WEIGHT_D2 | GA_D2signed 優勝テーブル追加 (depth-2 signed tournament 1位, 101/560勝) |
+| POS_ORDER_D3 | 旧 POS_ORDER ラベルをリネーム |
+| POS_ORDER_D2 | GA_D2signed 重み降順 offset テーブル追加 |
+| EQU エイリアス | `POS_WEIGHT EQU POS_WEIGHT_D2` / `POS_ORDER EQU POS_ORDER_D2`（1行変更で切替） |
+| NM_ALPHA_TBL init | hi バイト 0xFE → 0xF8 (-2048 に合わせて更新) |
 
-### 切り替えロジック
+### depth 切り替えロジック
 
 ```asm
         LD   A,(EMPTY_CACHE)
         CP   D3_THRESHOLD       ; carry if empty < 20
-        JR   C,AS_DEPTH3
-        LD   A,1                ; 空き >= 20 → depth-2 (TOTAL_DEPTH=1)
-        JR   AS_SET_DEPTH
-AS_DEPTH3:
+        JR   NC,AS_DEPTH2
         LD   A,2                ; 空き < 20  → depth-3 (TOTAL_DEPTH=2)
+        JR   AS_SET_DEPTH
+AS_DEPTH2:
+        LD   A,1                ; 空き >= 20 → depth-2 (TOTAL_DEPTH=1)
 AS_SET_DEPTH:
         LD   (NM_TOTAL_DEPTH),A
 ```
 
+### GA_D2signed テーブル
+
+```
+POS_WEIGHT_D2:
+;       A    B    C    D    E    F    G    H
+DEFB  114,  -5, -16,  -7,  -7, -16,  -5, 114  ; 1
+DEFB   -5, -54, -16,   7,   7, -16, -54,  -5  ; 2
+DEFB  -16, -16,   6,   2,   2,   6, -16, -16  ; 3
+DEFB   -7,   7,   2, -12, -12,   2,   7,  -7  ; 4-5
+DEFB  -16, -16,   6,   2,   2,   6, -16, -16  ; 6
+DEFB   -5, -54, -16,   7,   7, -16, -54,  -5  ; 7
+DEFB  114,  -5, -16,  -7,  -7, -16,  -5, 114  ; 8
+```
+
+tournament 結果: D2signed 1位 (101/560勝) > D3 (55/560勝)。コーナー重視・隅渡し防止が改善。
+
 ### 動作確認
 
-アセンブル確認後、実機で depth-2/3 動作を確認予定。
+アセンブル確認後、実機で depth-2/3 動作および D2signed 重みの効果を確認予定。
 
 ### 次のステップ
 
