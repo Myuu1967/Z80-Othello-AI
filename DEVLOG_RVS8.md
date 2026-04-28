@@ -3062,3 +3062,36 @@ mob_w を 1（乗算なし）から 2（×2）に変更。stable_w は据え置�
 |---------|-------|---------|
 | EARLY   | **×2** | ×4 |
 | MID     | **×2** | ×6 |
+
+---
+
+## optimize_weights_rfct100.py 作成 (2026-04-28)
+
+現在の RFCT100 評価関数（mob×2, stable×4/6）に完全一致する GA スクリプトを新規作成。
+
+### 評価関数の差し替え
+
+`oth.eval_board` をモンキーパッチで差し替え:
+```
+EARLY (empty>=44): pos_diff + mob_diff*2 + stable_diff*4
+MID   (empty>=12): pos_diff + mob_diff*2 + stable_diff*6
+LATE  (empty<12 ): stone_diff*100 + stable_diff*30  (旧来と同一)
+```
+
+### 設定
+
+| 項目 | 値 |
+|------|-----|
+| DEPTH | 2 |
+| GENERATIONS | 30 |
+| POP_SIZE | 20 |
+| N_GAMES / N_GAMES_FINAL | 5 / 20 |
+| 初期集団 | GA_D2S(現RFCT100) + GA_D3 + V2 + ランダム |
+| ベースライン | GA_D2S_PARAMS (現RFCT100使用中) |
+
+### 実行コマンド
+
+```
+cd python
+python optimize_weights_rfct100.py > ga_rfct100_result.txt 2>&1
+```
