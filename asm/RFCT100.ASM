@@ -46,7 +46,7 @@
 ;   - POS_WEIGHT_D3 / POS_WEIGHT_D2 両テーブル追加、EQU エイリアスで切替
 ; Apr 27th, 2026 RFCT100 Step7/7: EvalLeaf mob/stable 追加
 ;   - mob_diff × mob_w / stable_diff × stable_w をフェーズ別に加算
-;   - EARLY(>=44): mob×12, stable×30  MID(>=12): mob×8, stable×50  LATE(<12): mob×4, stable×30
+;   - EARLY(>=44): mob×3,  stable×8   MID(>=12): mob×3, stable×12  LATE(<12): EL_LATE(stone_diff×100+stable×30)
 ;   - POS_ORDER_D3  / POS_ORDER_D2  両テーブル追加、EQU エイリアスで切替
 ;   - AIset: depth-1 固定 → 空きマス数 < D3_THRESHOLD で depth-3 / else depth-2
 ; =========================================================
@@ -121,7 +121,7 @@ MOB_STABLE_CAP_LATE  EQU 1104   ; 96×4  + 24×30 (終盤: mob_w=4,  stable_w=30
 OBS_SCORE_MAX        EQU  130   ; POS_WEIGHT_MAX(66) + FLIPS_MAX(64)
 
 ; NegaMax スコア定数
-NM_SCORE_MIN    EQU  0F000H ; -4096 (mob/stable追加後 max|score|=2608, 2608-(-4096)=6704<32767)
+NM_SCORE_MIN    EQU  0E000H ; -8192 (LATE: stone_diff×100+stable×30, max|score|≈7020, 7020-(-8192)=15212<32767)
 
 
 ; =========================================================
@@ -1547,10 +1547,10 @@ NGS_D2:
 
 
 ; ---------------------------------------------------------
-; EvalLeaf  [Step 7/7: pos_diff + mob×mob_w + stable×stable_w]
-;   フェーズ判定: EMPTY_CACHE >= 44 → EARLY (mob×12, stable×30)
-;                 EMPTY_CACHE >= 12 → MID   (mob×8,  stable×50)
-;                 EMPTY_CACHE  < 12 → LATE  (mob×4,  stable×30)
+; EvalLeaf  [pos_diff + mob×mob_w + stable×stable_w]
+;   フェーズ判定: EMPTY_CACHE >= 44 → EARLY (mob×3,  stable×8)
+;                 EMPTY_CACHE >= 12 → MID   (mob×3,  stable×12)
+;                 EMPTY_CACHE  < 12 → LATE  (EL_LATE: stone_diff×100 + stable×30)
 ;
 ; Input:  D = 評価対象 side (AI視点: 正=有利)
 ; Output: HL = score (符号付き16bit)
@@ -1559,6 +1559,11 @@ NGS_D2:
 EvalLeaf:
         LD   A,D
         LD   (EV_SIDE),A    ; 評価対象 side を保存
+
+        ; LATE(empty<12): Python互換 stone_diff×100 + stable×30
+        LD   A,(EMPTY_CACHE)
+        CP   12
+        JP   C,EL_LATE
 
         LD   HL,0000H
         LD   (EV_POS_DIFF),HL
@@ -1628,29 +1633,11 @@ EL_NEXT:
         JR   Z,EL_MOBPOS
         LD   H,0FFH             ; 負値: 符号拡張
 EL_MOBPOS:
-        ; フェーズ判定: mob_w
-        LD   A,(EMPTY_CACHE)
-        CP   12
-        JR   C,EL_MOB4          ; < 12 → LATE: mob_w=4
-        CP   44
-        JR   NC,EL_MOB12        ; >= 44 → EARLY: mob_w=12
-        ; MID: mob_w=8
+        ; mob_w = 3 (EARLY/MID 共通): ×2 + ×1
+        LD   D,H
+        LD   E,L                ; DE = mob_diff (×1 copy)
         ADD  HL,HL              ; ×2
-        ADD  HL,HL              ; ×4
-        ADD  HL,HL              ; ×8
-        JR   EL_MOBDONE
-EL_MOB4:
-        ADD  HL,HL              ; ×2
-        ADD  HL,HL              ; ×4
-        JR   EL_MOBDONE
-EL_MOB12:
-        ; ×12 = ×8 + ×4
-        ADD  HL,HL              ; ×2
-        ADD  HL,HL              ; ×4
-        PUSH HL                 ; save ×4
-        ADD  HL,HL              ; ×8
-        POP  DE                 ; DE = ×4
-        ADD  HL,DE              ; ×12
+        ADD  HL,DE              ; ×3
 EL_MOBDONE:
         ; EV_POS_DIFF += mob_term
         EX   DE,HL
@@ -1682,38 +1669,109 @@ EL_MOBDONE:
         JR   Z,EL_STBPOS
         LD   H,0FFH             ; 負値: 符号拡張
 EL_STBPOS:
-        ; フェーズ判定: stable_w (LATE/EARLY → ×30, MID → ×50)
+        ; フェーズ判定: stable_w (EARLY=×8, MID=×12)
         LD   A,(EMPTY_CACHE)
-        CP   12
-        JR   C,EL_STB30         ; < 12 → LATE: stable_w=30
         CP   44
-        JR   NC,EL_STB30        ; >= 44 → EARLY: stable_w=30
-        ; MID: stable_w=50 = ×32 + ×16 + ×2
+        JR   NC,EL_STB8         ; >= 44 → EARLY: stable_w=8
+        ; MID: stable_w=12 = ×8 + ×4
         ADD  HL,HL              ; ×2
-        PUSH HL                 ; save ×2
         ADD  HL,HL              ; ×4
+        PUSH HL                 ; save ×4
         ADD  HL,HL              ; ×8
-        ADD  HL,HL              ; ×16
-        PUSH HL                 ; save ×16
-        ADD  HL,HL              ; ×32
-        POP  DE                 ; DE = ×16
-        ADD  HL,DE              ; ×48
-        POP  DE                 ; DE = ×2
-        ADD  HL,DE              ; ×50
+        POP  DE                 ; DE = ×4
+        ADD  HL,DE              ; ×12
         JR   EL_STBDONE
-EL_STB30:
-        ; stable_w=30 = ×32 - ×2
+EL_STB8:
+        ; stable_w=8 = ×8
         ADD  HL,HL              ; ×2
-        PUSH HL                 ; save ×2
         ADD  HL,HL              ; ×4
         ADD  HL,HL              ; ×8
-        ADD  HL,HL              ; ×16
-        ADD  HL,HL              ; ×32
-        POP  DE                 ; DE = ×2
-        AND  A                  ; clear carry
-        SBC  HL,DE              ; ×30
 EL_STBDONE:
         ; EV_POS_DIFF += stable_term → HL = final score
+        EX   DE,HL
+        LD   HL,(EV_POS_DIFF)
+        ADD  HL,DE
+        RET
+
+; --- LATE(empty<12): stone_diff × 100 + stable_diff × 30 ---
+; Python eval_board の LATE 式に完全一致
+EL_LATE:
+        ; 石数カウント: C=my_count, E=opp_count
+        LD   HL,BOARD
+        LD   B,64
+        LD   C,0
+        LD   E,0
+        LD   A,(EV_SIDE)
+        LD   D,A            ; D = my side
+EL_STONE_LOOP:
+        LD   A,(HL)
+        OR   A
+        JR   Z,EL_STONE_NEXT    ; EMPTY
+        CP   D
+        JR   NZ,EL_STONE_OPP
+        INC  C                  ; my stone
+        JR   EL_STONE_NEXT
+EL_STONE_OPP:
+        INC  E                  ; opp stone
+EL_STONE_NEXT:
+        INC  HL
+        DJNZ EL_STONE_LOOP
+
+        ; stone_diff = C - E → HL (符号付き16bit)
+        LD   A,C
+        SUB  E
+        LD   L,A
+        LD   H,0
+        BIT  7,A
+        JR   Z,EL_LATE_SPOS
+        LD   H,0FFH
+EL_LATE_SPOS:
+        ; × 100 = ×64 + ×32 + ×4
+        ADD  HL,HL          ; ×2
+        ADD  HL,HL          ; ×4
+        PUSH HL             ; save ×4
+        ADD  HL,HL          ; ×8
+        ADD  HL,HL          ; ×16
+        ADD  HL,HL          ; ×32
+        PUSH HL             ; save ×32
+        ADD  HL,HL          ; ×64
+        POP  DE
+        ADD  HL,DE          ; ×96
+        POP  DE
+        ADD  HL,DE          ; ×100
+        LD   (EV_POS_DIFF),HL
+
+        ; stable_diff × 30: stable_ai - stable_opp
+        LD   A,(EV_SIDE)
+        LD   D,A
+        CALL CountStable        ; A = stable_ai
+        PUSH AF
+        LD   A,(EV_SIDE)
+        LD   B,A
+        LD   A,3
+        SUB  B
+        LD   D,A
+        CALL CountStable        ; A = stable_opp
+        LD   C,A
+        POP  DE                 ; D = stable_ai
+        LD   A,D
+        SUB  C                  ; A = stable_diff (signed byte)
+        LD   L,A
+        LD   H,0
+        BIT  7,A
+        JR   Z,EL_LATE_STBPOS
+        LD   H,0FFH
+EL_LATE_STBPOS:
+        ; × 30 = ×32 - ×2
+        ADD  HL,HL          ; ×2
+        PUSH HL
+        ADD  HL,HL          ; ×4
+        ADD  HL,HL          ; ×8
+        ADD  HL,HL          ; ×16
+        ADD  HL,HL          ; ×32
+        POP  DE
+        AND  A
+        SBC  HL,DE          ; ×30
         EX   DE,HL
         LD   HL,(EV_POS_DIFF)
         ADD  HL,DE
@@ -1775,11 +1833,11 @@ NM_RECURSE:
 
         ADD  A,A                ; A = depth * 2
         LD   C,A
-        LD   HL,NM_ALPHA_TBL    ; NM_ALPHA_TBL[depth] = NM_SCORE_MIN (F000H = -4096)
+        LD   HL,NM_ALPHA_TBL    ; NM_ALPHA_TBL[depth] = NM_SCORE_MIN (E000H = -8192)
         ADD  HL,BC
         LD   (HL),00H           ; lo = 00H
         INC  HL
-        LD   (HL),0F0H          ; hi = F0H
+        LD   (HL),0E0H          ; hi = E0H
 
         CALL NM_GetSaveBuf      ; 盤面退避
         CALL SaveBoard
