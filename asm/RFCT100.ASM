@@ -1548,8 +1548,8 @@ NGS_D2:
 
 ; ---------------------------------------------------------
 ; EvalLeaf  [pos_diff + mob×mob_w + stable×stable_w]
-;   フェーズ判定: EMPTY_CACHE >= 44 → EARLY (mob×1,  stable×4)
-;                 EMPTY_CACHE >= 12 → MID   (mob×1,  stable×6)
+;   フェーズ判定: EMPTY_CACHE >= 44 → EARLY (mob×2,  stable×4)
+;                 EMPTY_CACHE >= 12 → MID   (mob×2,  stable×6)
 ;                 EMPTY_CACHE  < 12 → LATE  (EL_LATE: stone_diff×100 + stable×30)
 ;
 ; Input:  D = 評価対象 side (AI視点: 正=有利)
@@ -1633,7 +1633,8 @@ EL_NEXT:
         JR   Z,EL_MOBPOS
         LD   H,0FFH             ; 負値: 符号拡張
 EL_MOBPOS:
-        ; mob_w = 1 (EARLY/MID 共通): mob_diff をそのまま使用
+        ; mob_w = 2 (EARLY/MID 共通)
+        ADD  HL,HL              ; ×2
 EL_MOBDONE:
         ; EV_POS_DIFF += mob_term
         EX   DE,HL

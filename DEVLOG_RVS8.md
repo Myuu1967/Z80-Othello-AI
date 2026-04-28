@@ -3051,3 +3051,14 @@ mob_w=1 は乗算なし（mob_diff をそのまま加算）。EL_MOBPOS の計�
 
 - max|score|: pos_diff ±1168 + mob×1 ±32 + stable×6 ±96 = **±1296**
 - NM_SCORE_MIN = -8192: 1296+8192=9488 < 32767 ✓
+
+---
+
+## RFCT100.ASM EvalLeaf mob_w 1→2 に変更 (2026-04-28)
+
+mob_w を 1（乗算なし）から 2（×2）に変更。stable_w は据え置き。
+
+| フェーズ | mob_w | stable_w |
+|---------|-------|---------|
+| EARLY   | **×2** | ×4 |
+| MID     | **×2** | ×6 |
