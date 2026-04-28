@@ -1548,8 +1548,8 @@ NGS_D2:
 
 ; ---------------------------------------------------------
 ; EvalLeaf  [pos_diff + mob×mob_w + stable×stable_w]
-;   フェーズ判定: EMPTY_CACHE >= 44 → EARLY (mob×3,  stable×8)
-;                 EMPTY_CACHE >= 12 → MID   (mob×3,  stable×12)
+;   フェーズ判定: EMPTY_CACHE >= 44 → EARLY (mob×1,  stable×4)
+;                 EMPTY_CACHE >= 12 → MID   (mob×1,  stable×6)
 ;                 EMPTY_CACHE  < 12 → LATE  (EL_LATE: stone_diff×100 + stable×30)
 ;
 ; Input:  D = 評価対象 side (AI視点: 正=有利)
@@ -1633,11 +1633,7 @@ EL_NEXT:
         JR   Z,EL_MOBPOS
         LD   H,0FFH             ; 負値: 符号拡張
 EL_MOBPOS:
-        ; mob_w = 3 (EARLY/MID 共通): ×2 + ×1
-        LD   D,H
-        LD   E,L                ; DE = mob_diff (×1 copy)
-        ADD  HL,HL              ; ×2
-        ADD  HL,DE              ; ×3
+        ; mob_w = 1 (EARLY/MID 共通): mob_diff をそのまま使用
 EL_MOBDONE:
         ; EV_POS_DIFF += mob_term
         EX   DE,HL
@@ -1669,23 +1665,21 @@ EL_MOBDONE:
         JR   Z,EL_STBPOS
         LD   H,0FFH             ; 負値: 符号拡張
 EL_STBPOS:
-        ; フェーズ判定: stable_w (EARLY=×8, MID=×12)
+        ; フェーズ判定: stable_w (EARLY=×4, MID=×6)
         LD   A,(EMPTY_CACHE)
         CP   44
-        JR   NC,EL_STB8         ; >= 44 → EARLY: stable_w=8
-        ; MID: stable_w=12 = ×8 + ×4
+        JR   NC,EL_STB4         ; >= 44 → EARLY: stable_w=4
+        ; MID: stable_w=6 = ×4 + ×2
         ADD  HL,HL              ; ×2
+        PUSH HL                 ; save ×2
         ADD  HL,HL              ; ×4
-        PUSH HL                 ; save ×4
-        ADD  HL,HL              ; ×8
-        POP  DE                 ; DE = ×4
-        ADD  HL,DE              ; ×12
+        POP  DE                 ; DE = ×2
+        ADD  HL,DE              ; ×6
         JR   EL_STBDONE
-EL_STB8:
-        ; stable_w=8 = ×8
+EL_STB4:
+        ; stable_w=4 = ×4
         ADD  HL,HL              ; ×2
         ADD  HL,HL              ; ×4
-        ADD  HL,HL              ; ×8
 EL_STBDONE:
         ; EV_POS_DIFF += stable_term → HL = final score
         EX   DE,HL
