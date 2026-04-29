@@ -1967,16 +1967,21 @@ NMR_LOOP:
         ADD  HL,DE
         LD   D,(HL)
 
-        CALL ApplyMove          ; D=side, B=row, C=col
+        CALL ApplyMove          ; D=side (ApplyMove内でD破壊→再ロード必須)
 
-        ; 相手サイドを D に設定
-        LD   A,BLACK
-        CP   D
-        JR   NZ,NMR_OPP_WHITE
-        LD   D,WHITE
+        ; 相手サイドを D に設定 (NM_SIDE_TBL[depth] から現サイドを再ロード)
+        LD   A,(NM_CALL_DEPTH)
+        LD   HL,NM_SIDE_TBL
+        LD   C,A
+        LD   B,0
+        ADD  HL,BC
+        LD   A,(HL)             ; A = 現サイド
+        CP   BLACK
+        JR   Z,NMR_OPP_WHITE    ; 現サイドBLACK → 相手WHITE
+        LD   D,BLACK
         JR   NMR_DO_RECURSE
 NMR_OPP_WHITE:
-        LD   D,BLACK
+        LD   D,WHITE
 
 NMR_DO_RECURSE:
         LD   A,(NM_CALL_DEPTH)  ; NM_CALL_DEPTH++ (再帰前)
