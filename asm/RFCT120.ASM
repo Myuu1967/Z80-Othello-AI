@@ -358,6 +358,7 @@ NM_IDX_TBL:     DEFS 4          ; ループインデックス per depth (0..3)
 NM_SIDE_TBL:    DEFS 4          ; 手番 side per depth (0..3)
 NM_ROOT_SCORE:  DEFW 0          ; AIset: 符号付き16bit ルートベストスコア
 NM_ROOT_POS:    DEFB 0FFH       ; AIset: 最善手 offset (FFH=未発見)
+NM_AIset_ALPHA: DEFW 0          ; β-cutoff: AIset ループの現在ベスト (depth=0 の parent alpha)
 EV_POS_DIFF:    DEFW 0          ; EvalLeaf: pos_diff 作業用 (符号付き16bit)
 EV_SIDE:        DEFB 0          ; EvalLeaf: 評価対象 side
 AI_MOB_COUNT:   DEFB 0          ; CountMobility: AI合法手数
@@ -1433,6 +1434,8 @@ AS_LOOP:
         LD   D,A
         CALL ApplyMove
 
+        LD   HL,(NM_ROOT_SCORE)         ; β-cutoff: depth=0 の parent alpha をセット
+        LD   (NM_AIset_ALPHA),HL
         LD   A,(HumSide)
         LD   D,A
         CALL NegaMax            ; HL = score (HumSide視点)
@@ -2034,6 +2037,39 @@ NMR_DO_RECURSE:
         JR   Z,NMR_NO_UPDATE
         LD   (IX+0),L           ; alpha.lo = score.lo
         LD   (IX+1),H           ; alpha.hi = score.hi
+
+        ; β-cutoff: alpha[depth] + alpha_parent >= 0 → 枝刈り
+        ; (= alpha[depth] >= -alpha_parent = beta)
+        LD   A,(NM_CALL_DEPTH)
+        OR   A
+        JR   NZ,NMR_BCUT_D1P   ; depth >= 1 → NM_ALPHA_TBL[depth-1]
+        ; depth==0: parent alpha = NM_AIset_ALPHA
+        PUSH HL
+        LD   HL,(NM_AIset_ALPHA)
+        LD   B,H
+        LD   C,L
+        POP  HL
+        JR   NMR_BCUT_CHK
+NMR_BCUT_D1P:
+        DEC  A
+        ADD  A,A                ; (depth-1)*2
+        LD   E,A
+        LD   D,0
+        PUSH HL
+        LD   HL,NM_ALPHA_TBL
+        ADD  HL,DE
+        LD   C,(HL)
+        INC  HL
+        LD   B,(HL)             ; BC = alpha[depth-1]
+        POP  HL                 ; HL = alpha[depth]
+NMR_BCUT_CHK:
+        AND  A
+        ADC  HL,BC              ; alpha[depth] + alpha_parent
+        JP   M,NMR_NO_UPDATE    ; sum < 0 → no cutoff
+        ; β-cutoff 発火
+        CALL NM_GetSaveBuf
+        CALL RestoreBoard
+        JP   NMR_RETURN
 
 NMR_NO_UPDATE:
         CALL NM_GetSaveBuf      ; 次イテレーション用に盤面復元
