@@ -1,6 +1,9 @@
 """
 オセロ 人 vs AI (tkinter GUI)
-評価関数: RFCT100 v2 (mob×8, stable×8/16, -stone_diff×8/4)
+評価関数: RFCT100.ASM EvalLeaf と同一
+  EARLY(empty>=44): pos_diff + mob×8 + stable×8 - stonex8
+  MID  (empty>=12): pos_diff + mob×8 + stable×16 -  stonex4
+  LATE (empty<12):  stone_diff×100 + stable×30
 POS_WEIGHT: GA_D2S優勝値 (corner=114, x_sq=-54) [optimize_weights_rfct100_v2.py 1位]
 深さ: depth-2 (空き < D3_THRESHOLD=20 で depth-3 に自動切替)
 
