@@ -4,7 +4,8 @@
 `F:\ClaudeCode\Z80-Othello\asm\` 以下を絶対パスで参照・編集する
 （旧パス `F:\oke\Z80\ASM\オセロ\` は参照しない）
 
-**現在の作業対象: `RFCT100.ASM`（NM_SCORE_MIN修正済み・再実機確認待ち） — 再帰 negamax + 符号付き POS_WEIGHT（GA_D3優勝値）+ mob/stable 評価。次は α-β 枝刈り追加（TODO #24）。RFCT003.ASM からの分岐（別ライン）。**
+**現在の作業対象: `RFCT120.ASM`（RFCT100 から分岐・NM_RECURSEバグ修正済み） — 再帰 negamax + GA_D2S POS_WEIGHT + mob×8/stable×8/16/-stone×8/4 評価。次は α-β 枝刈り追加（TODO #24）。**
+`RFCT100.ASM` は現状維持（参照用・編集しない）。
 大会用バージョン確定済み: `F:\ClaudeCode\Z80-Othello\asm\MM2_AB_D3.ASM`
 
 ## 開発フロー（Python版を正とする）
@@ -167,8 +168,9 @@ max score = 128 + 64 flips = 192 < 256 (byte-safe)
 20. **Pico棋譜記録・盤面ログ** — 対局中の全着手と盤面スナップショットをLittleFSに保存。replay_log機能と連携
 21. **EPROM（27C256）単独起動動作確認** — モニタROMと差し替えて電源ON直後からオセロが起動することを確認
 22. ~~**【RFCT100】AIコア再構築**~~ ✓ 完了（2026-04-26）。再帰 negamax（depth-2/3）+ GA_D3 POS_WEIGHT + mob/stable 評価。アセンブルOK。実機確認待ち。
-23. **【RFCT100】実機確認（再）** — NM_SCORE_MIN 修正（-2048→-4096）済み。再アセンブル→実機確認。d2評価おかしい現象はホライゾン効果のため仕様、d3急落は正常動作と確認済み。処理時間最大8秒。
-24. **【RFCT100】α-β 枝刈り追加** — NM_RECURSE に β カットオフを実装し深さ3の速度改善（8秒→4秒以下目標）。
+23. ~~**【RFCT100】実機確認（再）**~~ RFCT100 は現状維持。RFCT120 を後継として開発継続。
+24. **【RFCT120】実機確認** — NM_RECURSEバグ修正済み・GA_D2S POS_WEIGHT・mob×8/stable×8/16/-stone×8/4。アセンブル→実機確認（AI=WHITE で正しく動くか）。
+25. **【RFCT120】α-β 枝刈り追加** — NM_RECURSE に β カットオフを実装し depth-3 の速度改善（8秒→4秒以下目標）。
 
 ## ROM ブート化計画（オセロ完成後）
 
