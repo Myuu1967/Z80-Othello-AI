@@ -261,6 +261,37 @@ EvalLeaf の `mob_diff×2` で部分的に捉えるが、depth-2 では2手後�
 
 ---
 
+## NM_RECURSE バグ修正 (2026-04-29)
+
+### 原因
+
+`ApplyMove` 内で `TryDirCount` が `LD D,0` を実行するため、`ApplyMove` 返り時点で D=0。
+その後の opponent side 判定コードが **D (=0) をそのまま参照** していた。
+
+```asm
+; 修正前 (バグあり)
+CALL ApplyMove     ; D は TryDirCount の LD D,0 で破壊され D=0
+LD   A,BLACK       ; A = 1
+CP   D             ; 1 vs 0 → 常に NZ
+JR   NZ,NMR_OPP_WHITE  ; 常にジャンプ
+LD   D,WHITE       ; スキップ
+NMR_OPP_WHITE:
+LD   D,BLACK       ; 常に D=BLACK になる
+```
+
+### 影響
+
+- **AI=BLACK** (HumSide=WHITE): 偶然正しく動作（opponent=BLACK が正解）
+- **AI=WHITE** (HumSide=BLACK): 誤動作（opponent=WHITE のはず → BLACK を設定）
+  → NegaMax が WHITE 側も BLACK として評価 → 評価符号が反転 → 最悪手を選択するに等しい動作
+
+### 修正
+
+`ApplyMove` 後に `NM_SIDE_TBL[depth]` から現サイドを再ロードして正しい opponent を設定。
+RFCT100.ASM / RFCT120.ASM 両方に適用済み。
+
+---
+
 ## RFCT100 v2 評価関数設計・GA スクリプト作成 (2026-04-29)
 
 ### 動機
