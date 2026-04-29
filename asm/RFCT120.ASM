@@ -257,9 +257,9 @@ POS_ORDER_D2:
         ; weight=-54: x_sq (B2/G2/B7/G7)
         DEFB  9, 14, 49, 54
 
-; --- D2/D3 切替エイリアス: 以下の1行を変えるだけで切替 ---
-POS_WEIGHT EQU POS_WEIGHT_D2   ; → _D3 で GA_D3テーブルに切替
-POS_ORDER  EQU POS_ORDER_D2    ; → _D3 で GA_D3テーブルに切替
+; --- D2/D3 切替はランタイムで実施 (AIset AS_SET_DEPTH で NM_WT_PTR/NM_ORD_PTR をセット) ---
+; POS_WEIGHT EQU POS_WEIGHT_D2   ← 廃止 (ランタイム切替に移行)
+; POS_ORDER  EQU POS_ORDER_D2    ← 廃止 (ランタイム切替に移行)
 
 ; [WEIGHT] 安定石コーナーテーブル (3バイト x 4コーナー)
 ; 各エントリ: offset, dc(列方向 +1/FFH), dr(行方向 +1/FFH)
@@ -361,6 +361,8 @@ NM_ROOT_POS:    DEFB 0FFH       ; AIset: 最善手 offset (FFH=未発見)
 EV_POS_DIFF:    DEFW 0          ; EvalLeaf: pos_diff 作業用 (符号付き16bit)
 EV_SIDE:        DEFB 0          ; EvalLeaf: 評価対象 side
 AI_MOB_COUNT:   DEFB 0          ; CountMobility: AI合法手数
+NM_WT_PTR:      DEFW 0          ; 使用中の POS_WEIGHT テーブル先頭アドレス (AIset で設定)
+NM_ORD_PTR:     DEFW 0          ; 使用中の POS_ORDER  テーブル先頭アドレス (AIset で設定)
 
 ; ---- CountStable work area ----
 CS_SIDE:        DEFB 0          ; CountStable: 対象サイド
@@ -1365,9 +1367,17 @@ AIset:
         CP   D3_THRESHOLD
         JR   NC,AS_DEPTH2
         LD   A,2                ; depth-3: NM_TOTAL_DEPTH=2
+        LD   HL,POS_WEIGHT_D3
+        LD   (NM_WT_PTR),HL
+        LD   HL,POS_ORDER_D3
+        LD   (NM_ORD_PTR),HL
         JR   AS_SET_DEPTH
 AS_DEPTH2:
         LD   A,1                ; depth-2: NM_TOTAL_DEPTH=1
+        LD   HL,POS_WEIGHT_D2
+        LD   (NM_WT_PTR),HL
+        LD   HL,POS_ORDER_D2
+        LD   (NM_ORD_PTR),HL
 AS_SET_DEPTH:
         LD   (NM_TOTAL_DEPTH),A
 
@@ -1381,7 +1391,7 @@ AS_LOOP:
         JP   NC,AS_END
 
         ; offset = POS_ORDER[AS_IDX]
-        LD   HL,POS_ORDER
+        LD   HL,(NM_ORD_PTR)
         LD   C,A
         LD   B,0
         ADD  HL,BC
@@ -1571,7 +1581,7 @@ EvalLeaf:
         LD   (EV_POS_DIFF),HL
 
         LD   IX,BOARD       ; IX = BOARD ポインタ
-        LD   IY,POS_WEIGHT  ; IY = POS_WEIGHT ポインタ
+        LD   IY,(NM_WT_PTR) ; IY = POS_WEIGHT テーブル (depth別)
         LD   B,64           ; 64マスループ
 
 EL_LOOP:
@@ -1894,7 +1904,7 @@ NMR_LOOP:
         CP   64
         JP   NC,NMR_END
 
-        LD   HL,POS_ORDER       ; offset = POS_ORDER[idx]
+        LD   HL,(NM_ORD_PTR)    ; offset = POS_ORDER[idx]
         LD   C,A
         ADD  HL,BC
         LD   A,(HL)             ; A = offset
@@ -1942,7 +1952,7 @@ NMR_LOOP:
         LD   B,0
         ADD  HL,BC
         LD   A,(HL)             ; A = idx
-        LD   HL,POS_ORDER
+        LD   HL,(NM_ORD_PTR)
         LD   C,A
         LD   B,0
         ADD  HL,BC

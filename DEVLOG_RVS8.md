@@ -368,3 +368,35 @@ GA スクリプト (optimize_weights_rfct100_v2.py) も同値に同期済み。
 - 空き ≥ 20 → depth-2 / 空き < 20 → depth-3 自動切替
 - AI 最終手を黄色リングでハイライト、ステータスバーに評価値・深さ表示
 - PASS ダイアログ、ゲーム終了後リプレイ対応
+
+---
+
+## RFCT120 POS_WEIGHT ランタイム切替 + depth-3 GA スクリプト作成 (2026-04-29)
+
+### 背景
+
+depth-2 と depth-3 では最適な POS_WEIGHT が異なる（depth-3 ではより先を読めるため
+コーナー重みを下げられる）。従来はコンパイル時 EQU エイリアスで固定していたが、
+AIset で depth を選択するタイミングにランタイム切替を実装した。
+
+### RFCT120.ASM 変更内容
+
+- `NM_WT_PTR` / `NM_ORD_PTR` 変数を追加（使用中テーブルの先頭アドレスを保持）
+- `AIset` の depth 選択分岐で両ポインタをセット
+  - depth-3 → `POS_WEIGHT_D3` / `POS_ORDER_D3`
+  - depth-2 → `POS_WEIGHT_D2` / `POS_ORDER_D2`
+- `EvalLeaf`: `LD IY,POS_WEIGHT` → `LD IY,(NM_WT_PTR)`
+- `AS_LOOP` / `NMR_LOOP`×2: `LD HL,POS_ORDER` → `LD HL,(NM_ORD_PTR)`（計3箇所）
+- コンパイル時 EQU エイリアス（`POS_WEIGHT EQU POS_WEIGHT_D2` 等）をコメントアウト
+
+### GA スクリプト作成
+
+`python/optimize_weights_d3_v2eval.py` を新規作成。
+
+- depth-3 × v2 評価関数（mob×8/stable×8/16/-stone×8/4）で POS_WEIGHT を最適化
+- 初期ベースライン: `GA_D3_PARAMS`（旧 depth-3 最適値）
+- 設定: 個体数=12, 世代=20, GA評価=3ゲーム, トーナメント=10ゲーム
+- 所要時間: 60〜90 分見込み（実行中）
+- 結果は `result_d3_v2eval.txt` に出力
+
+GA 完了後に `POS_WEIGHT_D3` / `POS_ORDER_D3` を新値に更新予定。
