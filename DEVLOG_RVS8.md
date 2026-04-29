@@ -3126,3 +3126,84 @@ python optimize_weights_rfct100.py > ga_rfct100_result.txt 2>&1
 ### Z80 反映済み
 
 `RFCT100.ASM`: `POS_WEIGHT_D2` / `POS_ORDER_D2` を優勝テーブルに更新（2026-04-29）。
+
+---
+
+## RFCT100 実機対局観察・depth-2 動作分析 (2026-04-29)
+
+### 対局ログ（AI=O、人間=X）
+
+```
+X:07 O:12  AI moves to C7  Eval:-134
+X:06 O:14  人間: C2
+X:08 O:13  AI moves to B1  Eval:-50
+X:05 O:17
+```
+
+### negamax の動作確認
+
+石数の整合を検証:
+- C7(O): C6(X→O) 1枚フリップ → X:07-1=06, O:12+2=14 ✓
+- C2(X): D3(O→X) 1枚フリップ（対角線 C2→D3→E4 で D3 のみ） → X:06+2=08, O:14-1=13 ✓
+- B1(O): 対角線 B1→C2(X)→D3(X)→E4(X)→F5(O) で3枚フリップ → X:08-3=05, O:13+4=17 ✓
+
+negamax のスコア符号も正常:
+- X が H1(コーナー=+157)を保有、O の石は内陸（負値マス）に集中
+- O の pos_diff ≈ -357（O:17石でも X のコーナー1個に大敗する評価）
+- Eval:-134 / Eval:-50 はいずれも「O が不利」という正しい評価
+
+### EvalLeaf の評価式（コード確認済み）
+
+```
+フェーズ (EMPTY_CACHE で分岐):
+  EARLY (空き≥44): pos_diff + mob_diff×2 + stable_diff×4
+  MID   (空き≥12): pos_diff + mob_diff×2 + stable_diff×6
+  LATE  (空き<12):  stone_diff×100 + stable_diff×30
+
+pos_diff = Σ(自石: +POS_WEIGHT) - Σ(相手石: +POS_WEIGHT)
+mob_diff = 自分の合法手数 - 相手の合法手数
+stable_diff = 自分の安定石数 - 相手の安定石数
+```
+
+対局時は空き42マス → MID フェーズで評価。
+
+### depth-2 の構造（確認）
+
+```
+現局面
+└── AIset: AI が1手打つ       (ply1)
+    └── NegaMax(HumSide): 相手が最善手を打つ  (ply2)
+        └── EvalLeaf: この盤面を評価
+```
+
+AIset は `max_AI手[ -max_相手手[ -EvalLeaf ] ]` = `max_AI手[ min_相手手[EvalLeaf] ]` を選択。  
+表示 Eval はこの minimax スコア（単なる AI 着手後の評価ではない）。
+
+### depth-2 の限界：石数 vs モビリティ
+
+B1 着手は対角線3枚奪取（大きな石数利得）だが、以下の問題がある。
+
+**石数と合法手数の逆相関:**
+```
+中盤で石数が多い
+  → 相手にひっくり返せる石が多い
+  → 相手の合法手が増える
+  → 自分の合法手が減る（手詰まりリスク）
+```
+
+EvalLeaf は `mob_diff×2` を含むが、「B1 → 相手応手」の2手後の mob しか見えない。  
+3〜4手後の合法手枯渇は depth-2 では検出不可。
+
+| 深さ | 防げること |
+|------|-----------|
+| depth-2 | 即座に角を渡す手（1手後の脅威） |
+| depth-3 | 相手のセットアップ手1手分 |
+| depth-4以上 | 合法手の枯渇傾向 |
+| 完全読み | 確実な最善手 |
+
+### 課題・今後の方針
+
+- 現在 D3_THRESHOLD=20: 空き42マス中盤は depth-2 しか動かない
+- `mob_diff` の重みを上げることで多少改善できるが根本解決ではない
+- **D3_THRESHOLD を上げる（例: 30）** ことで depth-3 適用範囲を広げられるが、処理時間とのトレードオフ
+- α-β 枝刈り（TODO #24）実装後に D3_THRESHOLD 引き上げを検討
