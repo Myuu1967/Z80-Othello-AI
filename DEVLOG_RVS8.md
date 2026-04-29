@@ -257,3 +257,67 @@ EvalLeaf の `mob_diff×2` で部分的に捉えるが、depth-2 では2手後�
 1. **α-β 枝刈り追加（TODO #24）** → 速度改善 → D3_THRESHOLD 引き上げ
 2. D3_THRESHOLD を 20→30 程度に上げることで depth-3 の適用範囲を広げる
 3. mob_diff の重みを上げることも検討（ただし GA で再調整が必要）
+
+---
+
+## RFCT100 v2 評価関数設計・GA スクリプト作成 (2026-04-29)
+
+### 動機
+
+depth-2 対局観察で「石を多く取る手が mob を下げる」問題を確認。  
+中盤に石が多くなると相手の合法手が増え、自分の合法手が減る。  
+mob_diff×2 では捉えきれない部分を **石数差ペナルティ** で補う。
+
+### 新評価式 (optimize_weights_rfct100_v2.py)
+
+```
+EARLY (empty≥44): pos_diff + mob_diff×3 + stable_diff×4  - stone_diff×2
+MID   (empty≥12): pos_diff + mob_diff×3 + stable_diff×6  - stone_diff×1
+LATE  (empty<12):  stone_diff×100 + stable_diff×30  (変更なし)
+```
+
+`-stone_diff×w` = 自石が相手より多いほどスコアが下がる → 石の取り過ぎを抑制。  
+`mob_diff` を ×2→×3 に強化（全滅リスクの安全なプロキシとして）。  
+EARLY に比べ MID のペナルティを小さくして終盤移行を意識。
+
+### ウェイト選択の根拠
+
+| 項 | EARLY | MID | 理由 |
+|---|---|---|---|
+| mob_diff | ×3 | ×3 | mob は石数リスクの最も安全なプロキシ |
+| stable_diff | ×4 | ×6 | 変更なし |
+| stone_diff | −×2 | −×1 | 序盤は差が小さく影響軽微、中盤で緩める |
+
+### 作成ファイル
+
+`python/optimize_weights_rfct100_v2.py`  
+- 初期集団の起点: GA_RFCT100_PARAMS（現行優勝値 `[157,-12,2,5,-49,-16,-4,-19,-15,-24]`）  
+- 出力: `ga_rfct100_v2_result.txt` に結果を記録予定  
+- GA 実行はユーザーが手動で実施（optimize_weights_rfct100_v2.py）
+
+### ウェイト改訂 (2026-04-29 対人試験後)
+
+ユーザーが play_vs_ai.py で対局し「強くなった」と確認したウェイトに更新:
+
+| 項 | 初期案 | 対人試験後 |
+|---|---|---|
+| mob_diff (EARLY/MID) | ×3 | ×8 |
+| stable_diff EARLY | ×4 | ×8 |
+| stable_diff MID | ×6 | ×16 |
+| stone_diff EARLY | −×2 | −×8 |
+| stone_diff MID | −×1 | −×4 |
+
+位置重みより動的評価（mob・stable・石数ペナルティ）を重視する方向。  
+GA スクリプト (optimize_weights_rfct100_v2.py) も同値に同期済み。
+
+---
+
+## 人 vs AI 対戦 GUI 作成 (2026-04-29)
+
+`python/play_vs_ai.py` を新規作成。tkinter GUI。
+
+- 先後手選択ダイアログ → 合法手を緑ドット表示 → クリックで着手
+- AI は RFCT100 v2 評価関数 + GA_RFCT100 優勝 POS_WEIGHT を使用
+- 空き ≥ 20 → depth-2 / 空き < 20 → depth-3 自動切替
+- AI 最終手を黄色リングでハイライト、ステータスバーに評価値・深さ表示
+- PASS ダイアログ、ゲーム終了後リプレイ対応
