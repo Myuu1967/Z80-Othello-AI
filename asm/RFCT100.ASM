@@ -46,7 +46,8 @@
 ;   - POS_WEIGHT_D3 / POS_WEIGHT_D2 両テーブル追加、EQU エイリアスで切替
 ; Apr 27th, 2026 RFCT100 Step7/7: EvalLeaf mob/stable 追加
 ;   - mob_diff × mob_w / stable_diff × stable_w をフェーズ別に加算
-;   - EARLY(>=44): mob×3,  stable×8   MID(>=12): mob×3, stable×12  LATE(<12): EL_LATE(stone_diff×100+stable×30)
+;   - EARLY(>=44): mob×8, stable×8,  -stone×8   MID(>=12): mob×8, stable×16, -stone×4
+;   - LATE(<12): EL_LATE(stone_diff×100+stable×30)
 ;   - POS_ORDER_D3  / POS_ORDER_D2  両テーブル追加、EQU エイリアスで切替
 ;   - AIset: depth-1 固定 → 空きマス数 < D3_THRESHOLD で depth-3 / else depth-2
 ; =========================================================
@@ -121,7 +122,7 @@ MOB_STABLE_CAP_LATE  EQU 1104   ; 96×4  + 24×30 (終盤: mob_w=4,  stable_w=30
 OBS_SCORE_MAX        EQU  130   ; POS_WEIGHT_MAX(66) + FLIPS_MAX(64)
 
 ; NegaMax スコア定数
-NM_SCORE_MIN    EQU  0E000H ; -8192 (LATE: stone_diff×100+stable×30, max|score|≈7020, 7020-(-8192)=15212<32767)
+NM_SCORE_MIN    EQU  0E000H ; -8192 (LATE: stone_diff×100+stable×30, max|score|≈6480, 6480-(-8192)=14672<32767)
 
 
 ; =========================================================
@@ -1548,9 +1549,9 @@ NGS_D2:
 
 
 ; ---------------------------------------------------------
-; EvalLeaf  [pos_diff + mob×mob_w + stable×stable_w]
-;   フェーズ判定: EMPTY_CACHE >= 44 → EARLY (mob×2,  stable×4)
-;                 EMPTY_CACHE >= 12 → MID   (mob×2,  stable×6)
+; EvalLeaf  [pos_diff + mob×mob_w + stable×stable_w - stone_diff×stone_w]
+;   フェーズ判定: EMPTY_CACHE >= 44 → EARLY (mob×8, stable×8,  -stone×8)
+;                 EMPTY_CACHE >= 12 → MID   (mob×8, stable×16, -stone×4)
 ;                 EMPTY_CACHE  < 12 → LATE  (EL_LATE: stone_diff×100 + stable×30)
 ;
 ; Input:  D = 評価対象 side (AI視点: 正=有利)
@@ -1634,8 +1635,10 @@ EL_NEXT:
         JR   Z,EL_MOBPOS
         LD   H,0FFH             ; 負値: 符号拡張
 EL_MOBPOS:
-        ; mob_w = 2 (EARLY/MID 共通)
+        ; mob_w = 8 (EARLY/MID 共通)
         ADD  HL,HL              ; ×2
+        ADD  HL,HL              ; ×4
+        ADD  HL,HL              ; ×8
 EL_MOBDONE:
         ; EV_POS_DIFF += mob_term
         EX   DE,HL
@@ -1667,26 +1670,68 @@ EL_MOBDONE:
         JR   Z,EL_STBPOS
         LD   H,0FFH             ; 負値: 符号拡張
 EL_STBPOS:
-        ; フェーズ判定: stable_w (EARLY=×4, MID=×6)
+        ; フェーズ判定: stable_w (EARLY=×8, MID=×16)
         LD   A,(EMPTY_CACHE)
         CP   44
-        JR   NC,EL_STB4         ; >= 44 → EARLY: stable_w=4
-        ; MID: stable_w=6 = ×4 + ×2
+        JR   NC,EL_STB8         ; >= 44 → EARLY: stable_w=8
+        ; MID: stable_w=16
         ADD  HL,HL              ; ×2
-        PUSH HL                 ; save ×2
         ADD  HL,HL              ; ×4
-        POP  DE                 ; DE = ×2
-        ADD  HL,DE              ; ×6
+        ADD  HL,HL              ; ×8
+        ADD  HL,HL              ; ×16
         JR   EL_STBDONE
-EL_STB4:
-        ; stable_w=4 = ×4
+EL_STB8:
+        ; stable_w=8
         ADD  HL,HL              ; ×2
         ADD  HL,HL              ; ×4
+        ADD  HL,HL              ; ×8
 EL_STBDONE:
-        ; EV_POS_DIFF += stable_term → HL = final score
+        ; EV_POS_DIFF += stable_term
         EX   DE,HL
         LD   HL,(EV_POS_DIFF)
         ADD  HL,DE
+        LD   (EV_POS_DIFF),HL
+
+        ; --- stone_diff ペナルティ (EARLY: -×8, MID: -×4) ---
+        CALL CountStones        ; B=黒数, C=白数 (AF,D,HL 破壊)
+        LD   A,(EV_SIDE)
+        CP   BLACK
+        JR   Z,EL_STN_BLK
+        ; WHITE: stone_diff = C - B
+        LD   A,C
+        SUB  B
+        JR   EL_STN_DONE
+EL_STN_BLK:
+        ; BLACK: stone_diff = B - C
+        LD   A,B
+        SUB  C
+EL_STN_DONE:
+        ; sign-extend A → HL
+        LD   L,A
+        LD   H,0
+        BIT  7,A
+        JR   Z,EL_STN_POS
+        LD   H,0FFH
+EL_STN_POS:
+        ; フェーズ別: EARLY(>=44): ×8, MID: ×4
+        LD   A,(EMPTY_CACHE)
+        CP   44
+        JR   NC,EL_STN_8        ; >= 44 → EARLY: ×8
+        ; MID: ×4
+        ADD  HL,HL              ; ×2
+        ADD  HL,HL              ; ×4
+        JR   EL_STN_SUB
+EL_STN_8:
+        ; EARLY: ×8
+        ADD  HL,HL              ; ×2
+        ADD  HL,HL              ; ×4
+        ADD  HL,HL              ; ×8
+EL_STN_SUB:
+        ; EV_POS_DIFF -= stone_term → HL = final score
+        EX   DE,HL
+        LD   HL,(EV_POS_DIFF)
+        AND  A                  ; clear carry
+        SBC  HL,DE
         RET
 
 ; --- LATE(empty<12): stone_diff × 100 + stable_diff × 30 ---
