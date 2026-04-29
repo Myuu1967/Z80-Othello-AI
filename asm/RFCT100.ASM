@@ -194,19 +194,19 @@ POS_WEIGHT_D3:
         DEFB  -32, -45,  22,   1,   1,  22, -45, -32  ; 7
         DEFB   66, -32,  -1,  44,  44,  -1, -32,  66  ; 8
 
-; --- GA_RFCT100優勝テーブル (optimize_weights_rfct100.py 1位, 2026-04-29) ---
-;   corner=157, x_sq=-49, c_sq=-12, near_x=-16, edge_ctr=5
-;   inner_edge=-4, inner=-19, inner2=-15, center=-24, edge_near=2
+; --- GA_D2S優勝テーブル (optimize_weights_rfct100_v2.py 1位, 2026-04-29) ---
+;   corner=114, x_sq=-54, c_sq=-5, near_x=-16, edge_near=-16, edge_ctr=-7
+;   inner_edge=7, inner=6, inner2=2, center=-12
 POS_WEIGHT_D2:
         ;       A    B    C    D    E    F    G    H
-        DEFB  157, -12,   2,   5,   5,   2, -12, 157  ; 1
-        DEFB  -12, -49, -16,  -4,  -4, -16, -49, -12  ; 2
-        DEFB    2, -16, -19, -15, -15, -19, -16,   2  ; 3
-        DEFB    5,  -4, -15, -24, -24, -15,  -4,   5  ; 4
-        DEFB    5,  -4, -15, -24, -24, -15,  -4,   5  ; 5
-        DEFB    2, -16, -19, -15, -15, -19, -16,   2  ; 6
-        DEFB  -12, -49, -16,  -4,  -4, -16, -49, -12  ; 7
-        DEFB  157, -12,   2,   5,   5,   2, -12, 157  ; 8
+        DEFB  114,  -5, -16,  -7,  -7, -16,  -5, 114  ; 1
+        DEFB   -5, -54, -16,   7,   7, -16, -54,  -5  ; 2
+        DEFB  -16, -16,   6,   2,   2,   6, -16, -16  ; 3
+        DEFB   -7,   7,   2, -12, -12,   2,   7,  -7  ; 4
+        DEFB   -7,   7,   2, -12, -12,   2,   7,  -7  ; 5
+        DEFB  -16, -16,   6,   2,   2,   6, -16, -16  ; 6
+        DEFB   -5, -54, -16,   7,   7, -16, -54,  -5  ; 7
+        DEFB  114,  -5, -16,  -7,  -7, -16,  -5, 114  ; 8
 
 ; --- ムーブオーダリング用: POS_WEIGHT降順のマスoffset一覧 (各64バイト) ---
 ; offset = row*8 + col  (row=0..7, col=0..7)
@@ -234,27 +234,26 @@ POS_ORDER_D3:
         ; weight=-45: x_sq (B2/G2 etc.)
         DEFB  9, 14, 49, 54
 
-; GA_RFCT100優勝 重み降順: 157,5,2,-4,-12,-15,-16,-19,-24,-49
+; GA_D2S優勝 重み降順: 114,7,6,2,-5,-7,-12,-16,-54
 POS_ORDER_D2:
-        ; weight=157: corner
+        ; weight=114: corner
         DEFB  0,  7, 56, 63
-        ; weight=5: edge_ctr (D1/E1/A4/H4 etc.)
-        DEFB  3,  4, 24, 31, 32, 39, 59, 60
-        ; weight=2: edge_near (C1/F1/A3/H3 etc.)
-        DEFB  2,  5, 16, 23, 40, 47, 58, 61
-        ; weight=-4: inner_edge (D2/E2/B4/G4 etc.)
+        ; weight=7: inner_edge (D2/E2/B4/G4 etc.)
         DEFB 11, 12, 25, 30, 33, 38, 51, 52
-        ; weight=-12: c_sq (B1/G1/A2/H2 etc.)
-        DEFB  1,  6,  8, 15, 48, 55, 57, 62
-        ; weight=-15: inner2 (D3/E3/C4/F4 etc.)
-        DEFB 19, 20, 26, 29, 34, 37, 43, 44
-        ; weight=-16: near_x (C2/F2/B3/G3 etc.)
-        DEFB 10, 13, 17, 22, 41, 46, 50, 53
-        ; weight=-19: inner (C3/F3/C6/F6)
+        ; weight=6: inner (C3/F3/C6/F6)
         DEFB 18, 21, 42, 45
-        ; weight=-24: center (D4/E4/D5/E5)
+        ; weight=2: inner2 (D3/E3/C4/F4 etc.)
+        DEFB 19, 20, 26, 29, 34, 37, 43, 44
+        ; weight=-5: c_sq (B1/G1/A2/H2 etc.)
+        DEFB  1,  6,  8, 15, 48, 55, 57, 62
+        ; weight=-7: edge_ctr (D1/E1/A4/H4 etc.)
+        DEFB  3,  4, 24, 31, 32, 39, 59, 60
+        ; weight=-12: center (D4/E4/D5/E5)
         DEFB 27, 28, 35, 36
-        ; weight=-49: x_sq (B2/G2/B7/G7)
+        ; weight=-16: near_x+edge_near (C2/F2/B3/G3 + C1/F1/A3/H3 etc.)
+        DEFB 10, 13, 17, 22, 41, 46, 50, 53
+        DEFB  2,  5, 16, 23, 40, 47, 58, 61
+        ; weight=-54: x_sq (B2/G2/B7/G7)
         DEFB  9, 14, 49, 54
 
 ; --- D2/D3 切替エイリアス: 以下の1行を変えるだけで切替 ---

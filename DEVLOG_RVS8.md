@@ -173,7 +173,8 @@ pos_diff = Σ(自石:+POS_WEIGHT) - Σ(相手石:+POS_WEIGHT)  (符号付きテ�
 | Step1 | V2 (corner=120, x_sq=-40) | 初期値 |
 | Step6 | GA_D3 優勝 (corner=66, edge_ctr=44, x_sq=-45) | POS_WEIGHT_D3 |
 | Step6 | GA_D2signed 優勝 (corner=114, x_sq=-54) | POS_WEIGHT_D2 (初期) |
-| 2026-04-29 | **GA_RFCT100 優勝 (corner=157, x_sq=-49, 内陸全負値)** | POS_WEIGHT_D2 (現行) |
+| 2026-04-29 | GA_RFCT100 優勝 (corner=157, x_sq=-49, 内陸全負値) | POS_WEIGHT_D2 (廃止) |
+| 2026-04-29 | **GA_D2S 優勝 (corner=114, x_sq=-54, 内陸正値)** | POS_WEIGHT_D2 (現行) |
 
 ### EvalLeaf mob/stable ウェイト変遷
 
@@ -292,8 +293,23 @@ EARLY に比べ MID のペナルティを小さくして終盤移行を意識。
 
 `python/optimize_weights_rfct100_v2.py`  
 - 初期集団の起点: GA_RFCT100_PARAMS（現行優勝値 `[157,-12,2,5,-49,-16,-4,-19,-15,-24]`）  
-- 出力: `ga_rfct100_v2_result.txt` に結果を記録予定  
-- GA 実行はユーザーが手動で実施（optimize_weights_rfct100_v2.py）
+- 出力: `python/result2.txt` に結果記録済み
+
+### GA v2 結果 (optimize_weights_rfct100_v2.py, 2026-04-29)
+
+所要時間: 約52.6分（GA 40.8分 + トーナメント 11.8分）。20個体 900ゲーム。
+
+| 順位 | 勝数/900 | 備考 |
+|---|---|---|
+| **1位** | **128** | `[114,-5,-16,-7,-54,-16,7,6,2,-12]` [GA_D2S] ← **現行採用** |
+| 2位 | 111 | `[195,-16,-17,2,-3,-54,-16,-11,-2,-30]` |
+| 4位 | 94 | `[157,-12,2,5,-49,-16,-4,-19,-15,-24]` [GA_RFCT100、廃止] |
+| 8位 | 61 | `[66,-32,-1,44,-45,22,1,10,23,-29]` [GA_D3] |
+
+**結果考察**: v2評価関数（石数差ペナルティ）では内陸マスに正値（inner=6, inner2=2）を持つ GA_D2S が最適。  
+新しい GA 個体（corner=195〜207）は GA_D2S に届かなかった。  
+→ RFCT100.ASM の POS_WEIGHT_D2 と POS_ORDER_D2 を GA_D2S 値に更新済み。  
+→ `play_vs_ai.py` の POS_WEIGHT テーブルも同値に更新済み。
 
 ### ウェイト改訂 (2026-04-29 対人試験後)
 
