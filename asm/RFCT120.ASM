@@ -181,19 +181,19 @@ STONE_CHAR:
 ; 切替: 下部の EQU エイリアスを _D2 or _D3 に変更するだけ。
 ; ---------------------------------------------------------
 
-; --- GA_D3優勝テーブル (depth-3 AI同士 30世代, 2026-04-26) ---
-;   corner=66, edge_ctr=44, inner2=23, near_x=22, inner=10
-;   inner_edge=1, edge_near=-1, center=-29, c_sq=-32, x_sq=-45
+; --- GA_RFCT100優勝テーブル (optimize_weights_d3_v2eval.py 1位, depth-3×v2eval, 2026-04-30) ---
+;   corner=157, c_sq=-12, edge_near=2, edge_ctr=5, x_sq=-49, near_x=-16
+;   inner_edge=-4, inner=-19, inner2=-15, center=-24
 POS_WEIGHT_D3:
         ;       A    B    C    D    E    F    G    H
-        DEFB   66, -32,  -1,  44,  44,  -1, -32,  66  ; 1
-        DEFB  -32, -45,  22,   1,   1,  22, -45, -32  ; 2
-        DEFB   -1,  22,  10,  23,  23,  10,  22,  -1  ; 3
-        DEFB   44,   1,  23, -29, -29,  23,   1,  44  ; 4
-        DEFB   44,   1,  23, -29, -29,  23,   1,  44  ; 5
-        DEFB   -1,  22,  10,  23,  23,  10,  22,  -1  ; 6
-        DEFB  -32, -45,  22,   1,   1,  22, -45, -32  ; 7
-        DEFB   66, -32,  -1,  44,  44,  -1, -32,  66  ; 8
+        DEFB  157, -12,   2,   5,   5,   2, -12, 157  ; 1
+        DEFB  -12, -49, -16,  -4,  -4, -16, -49, -12  ; 2
+        DEFB    2, -16, -19, -15, -15, -19, -16,   2  ; 3
+        DEFB    5,  -4, -15, -24, -24, -15,  -4,   5  ; 4
+        DEFB    5,  -4, -15, -24, -24, -15,  -4,   5  ; 5
+        DEFB    2, -16, -19, -15, -15, -19, -16,   2  ; 6
+        DEFB  -12, -49, -16,  -4,  -4, -16, -49, -12  ; 7
+        DEFB  157, -12,   2,   5,   5,   2, -12, 157  ; 8
 
 ; --- GA_D2S優勝テーブル (optimize_weights_rfct100_v2.py 1位, 2026-04-29) ---
 ;   corner=114, x_sq=-54, c_sq=-5, near_x=-16, edge_near=-16, edge_ctr=-7
@@ -212,27 +212,27 @@ POS_WEIGHT_D2:
 ; --- ムーブオーダリング用: POS_WEIGHT降順のマスoffset一覧 (各64バイト) ---
 ; offset = row*8 + col  (row=0..7, col=0..7)
 
-; GA_D3 重み降順: 66,44,23,22,10,1,-1,-29,-32,-45
+; GA_RFCT100 重み降順: 157,5,2,-4,-12,-15,-16,-19,-24,-49
 POS_ORDER_D3:
-        ; weight=66: corner
+        ; weight=157: corner
         DEFB  0,  7, 56, 63
-        ; weight=44: edge_ctr (D1/A4 etc.)
+        ; weight=5: edge_ctr (D1/A4 etc.)
         DEFB  3,  4, 24, 31, 32, 39, 59, 60
-        ; weight=23: inner2 (D3/C4 etc.)
-        DEFB 19, 20, 26, 29, 34, 37, 43, 44
-        ; weight=22: near_x (C2/B3 etc.)
-        DEFB 10, 13, 17, 22, 41, 46, 50, 53
-        ; weight=10: inner (C3 etc.)
-        DEFB 18, 21, 42, 45
-        ; weight=1: inner_edge (D2/B4 etc.)
-        DEFB 11, 12, 25, 30, 33, 38, 51, 52
-        ; weight=-1: edge_near (C1/A3 etc.)
+        ; weight=2: edge_near (C1/A3 etc.)
         DEFB  2,  5, 16, 23, 40, 47, 58, 61
-        ; weight=-29: center (D4 etc.)
-        DEFB 27, 28, 35, 36
-        ; weight=-32: c_sq (B1/A2 etc.)
+        ; weight=-4: inner_edge (D2/B4 etc.)
+        DEFB 11, 12, 25, 30, 33, 38, 51, 52
+        ; weight=-12: c_sq (B1/A2 etc.)
         DEFB  1,  6,  8, 15, 48, 55, 57, 62
-        ; weight=-45: x_sq (B2/G2 etc.)
+        ; weight=-15: inner2 (D3/C4 etc.)
+        DEFB 19, 20, 26, 29, 34, 37, 43, 44
+        ; weight=-16: near_x (C2/B3 etc.)
+        DEFB 10, 13, 17, 22, 41, 46, 50, 53
+        ; weight=-19: inner (C3 etc.)
+        DEFB 18, 21, 42, 45
+        ; weight=-24: center (D4 etc.)
+        DEFB 27, 28, 35, 36
+        ; weight=-49: x_sq (B2/G2 etc.)
         DEFB  9, 14, 49, 54
 
 ; GA_D2S優勝 重み降順: 114,7,6,2,-5,-7,-12,-16,-54
