@@ -400,3 +400,61 @@ AIset で depth を選択するタイミングにランタイム切替を実装�
 - 結果は `result_d3_v2eval.txt` に出力
 
 GA 完了後に `POS_WEIGHT_D3` / `POS_ORDER_D3` を新値に更新予定。
+
+---
+
+## RFCT120 POS_WEIGHT_D3 更新 + β-cutoff 実装 (2026-04-30)
+
+### POS_WEIGHT_D3 / POS_ORDER_D3 を GA_RFCT100 値に更新
+
+`result_d3_v2eval.txt`（optimize_weights_d3_v2eval.py, depth-3×v2eval）の結果を反映。
+
+| 順位 | 勝数/280 | テーブル |
+|---|---|---|
+| **1位** | **49** | `[157,-12,2,5,-49,-16,-4,-19,-15,-24]` **GA_RFCT100** ← 採用 |
+| 2位 | 41 | `[114,-5,-16,-7,-54,-16,7,6,2,-12]` GA_D2S |
+| 7位 | 22 | `[66,-32,-1,44,-45,22,1,10,23,-29]` GA_D3（旧値） |
+
+変更点:
+- `POS_WEIGHT_D3`: 旧 GA_D3 値 → GA_RFCT100 値（corner=157, x_sq=-49, 内陸全負値）
+- `POS_ORDER_D3`: 重み降順を新テーブルに合わせて更新（157, 5, 2, -4, -12, -15, -16, -19, -24, -49）
+
+### β-cutoff 実装 (TODO #25)
+
+`NM_RECURSE` に β カットオフを追加。アセンブルOK。
+
+#### 実装方針
+
+negamax の性質: 子ノードのスコアは親の視点から符号反転して使う。
+
+cutoff 条件: `alpha[depth] + alpha_parent >= 0`  
+（= `alpha[depth] >= -alpha_parent = beta`）
+
+#### 追加変数
+
+`NM_AIset_ALPHA: DEFW` — AIset ループの現在ベスト（depth=0 の parent alpha）
+
+#### AIset 変更
+
+NegaMax 呼び出し直前に `NM_ROOT_SCORE → NM_AIset_ALPHA` をコピー。
+
+#### NM_RECURSE 変更（alpha 更新成功時のみチェック）
+
+```
+alpha 更新後:
+  LD A,(NM_CALL_DEPTH)
+  depth==0 → BC = NM_AIset_ALPHA
+  depth>=1 → BC = NM_ALPHA_TBL[(depth-1)*2]
+  ADC HL,BC   ; HL = alpha[depth] + alpha_parent
+  JP M, NMR_NO_UPDATE   ; sum < 0 → no cutoff
+  RestoreBoard → JP NMR_RETURN  ; β-cutoff 発火
+```
+
+#### 効果の見込み
+
+| depth | cutoff 発生条件 | 期待効果 |
+|---|---|---|
+| depth-2 | alpha[0] + NM_AIset_ALPHA >= 0（HumSide応手が良すぎる） | やや改善 |
+| depth-3 | alpha[1] + alpha[0] >= 0（内ループを早期打ち切り） | 主要な速度改善（O(b²)→O(b^1.5)相当） |
+
+実機での処理時間計測が次のステップ（目標: depth-3 で 4 秒以下）。
