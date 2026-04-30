@@ -115,7 +115,7 @@ EARLY_GAME  EQU 44          ; 空き >= 44: 序盤
 MID_GAME    EQU 12          ; 空き >= 12: 中盤、else: 終盤
 
 ; depth切り替え閾値
-D3_THRESHOLD EQU 20         ; 空き < 20 → depth-3 / 空き >= 20 → depth-2
+D3_THRESHOLD EQU 30         ; 空き < 30 → depth-3 / 空き >= 30 → depth-2
 
 ; Ply2Best β-cutoff: mob+stable 最大値 (フェーズ別)
 ;   mob_diff+64 max ≈ 96 (AI約32手 OPP=0), stable_diff+8 max ≈ 24 (AI=16石 OPP=0)
