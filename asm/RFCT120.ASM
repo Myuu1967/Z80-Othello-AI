@@ -50,6 +50,9 @@
 ;   - LATE(<12): EL_LATE(stone_diff×100+stable×30)
 ;   - POS_ORDER_D3  / POS_ORDER_D2  両テーブル追加、EQU エイリアスで切替
 ;   - AIset: depth-1 固定 → 空きマス数 < D3_THRESHOLD で depth-3 / else depth-2
+; Apr 30th, 2026 RFCT120: NM_RECURSE α下限継承 + エントリー β-cutoff追加
+;   - depth>=1 の NM_ALPHA_TBL[d] 初期値: NM_SCORE_MIN → NM_AIset_ALPHA (完全α-β)
+;   - エントリー β-cutoff: alpha[d]+alpha[d-1]>=0 なら SaveBoard前に即リターン
 ; =========================================================
 
         ORG 8000H
@@ -1887,11 +1890,48 @@ NM_RECURSE:
 
         ADD  A,A                ; A = depth * 2
         LD   C,A
-        LD   HL,NM_ALPHA_TBL    ; NM_ALPHA_TBL[depth] = NM_SCORE_MIN (E000H = -8192)
-        ADD  HL,BC
-        LD   (HL),00H           ; lo = 00H
+        LD   HL,NM_ALPHA_TBL
+        ADD  HL,BC              ; HL = &NM_ALPHA_TBL[depth]
+
+        ; 初期 alpha:
+        ;   depth==0 → NM_SCORE_MIN (-INF): 親から渡される alpha は -INF
+        ;   depth>=1 → NM_AIset_ALPHA (α 下限継承): -(-NM_AIset_ALPHA) = NM_AIset_ALPHA
+        ; ※ depth-3 専用実装。depth=1 のみ使用。
+        LD   A,(NM_CALL_DEPTH)
+        OR   A
+        JR   NZ,NMR_INIT_IHALPHA
+        ; depth==0: NM_SCORE_MIN (E000H)
+        LD   (HL),00H
         INC  HL
-        LD   (HL),0E0H          ; hi = E0H
+        LD   (HL),0E0H
+        JR   NMR_INIT_DONE
+NMR_INIT_IHALPHA:
+        ; depth>=1: NM_AIset_ALPHA を初期 alpha として書き込む
+        LD   A,(NM_AIset_ALPHA)
+        LD   (HL),A
+        INC  HL
+        LD   A,(NM_AIset_ALPHA+1)
+        LD   (HL),A
+        ; エントリー β-cutoff 確認: alpha[depth] + alpha[depth-1] >= 0 → 探索不要
+        ; (= 初期 alpha[depth](NM_AIset_ALPHA) が既に beta(-alpha[depth-1]) を超えている)
+        LD   HL,(NM_AIset_ALPHA)    ; HL = alpha[depth]  [LD HL,(nn) is valid Z80]
+        LD   A,(NM_CALL_DEPTH)
+        DEC  A
+        ADD  A,A                    ; (depth-1)*2  [A=0 以上, BC 再利用]
+        LD   C,A
+        LD   B,0
+        PUSH HL                     ; [sp] = NM_AIset_ALPHA
+        LD   HL,NM_ALPHA_TBL
+        ADD  HL,BC                  ; HL = &NM_ALPHA_TBL[depth-1]
+        LD   C,(HL)
+        INC  HL
+        LD   B,(HL)                 ; BC = alpha[depth-1]
+        POP  HL                     ; HL = NM_AIset_ALPHA
+        AND  A                      ; clear carry
+        ADC  HL,BC                  ; HL = alpha[depth] + alpha[depth-1]
+        JP   M,NMR_INIT_DONE        ; sum < 0 → エントリーカット不要
+        JP   NMR_RETURN             ; エントリー β-cutoff 発火 (盤面未変更なので RestoreBoard 不要)
+NMR_INIT_DONE:
 
         CALL NM_GetSaveBuf      ; 盤面退避
         CALL SaveBoard

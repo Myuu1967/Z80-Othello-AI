@@ -462,3 +462,51 @@ alpha 更新後:
 ### 実機確認結果 (2026-04-30, TODO #25)
 
 **先手・後手ともに AI 思考時間 4 秒以内を確認。β-cutoff の効果で RFCT120 は処理時間クリア。**
+
+---
+
+## RFCT120 α-β 完全実装（α下限継承 + エントリー β-cutoff）(2026-04-30)
+
+### 背景
+
+β-cutoff は実装済みだったが、α 下限ウィンドウの伝播が不完全だった。
+
+`NM_RECURSE` で `NM_ALPHA_TBL[depth]` を常に `NM_SCORE_MIN` で初期化していたため、
+depth=1 の探索で「すでに beta より大きい alpha」で入っても即時カットされず、
+葉評価を 1 回以上行ってから cutoff していた。
+
+### 標準 negamax α-β の α 伝播
+
+```
+depth=0 への α: NM_SCORE_MIN  (親=AIset の alpha は -INF)  → 変更なし
+depth=1 への α: NM_AIset_ALPHA (= -(-NM_AIset_ALPHA) = -beta[0])  ← 今回の修正
+```
+
+### 修正内容
+
+`NM_RECURSE` 初期化部分を変更（`NM_ALPHA_TBL[depth]` の初期化ロジック）:
+
+```asm
+; 変更前
+NM_ALPHA_TBL[depth] = NM_SCORE_MIN (E000H)  ; 常に固定
+
+; 変更後
+if depth == 0: NM_ALPHA_TBL[0] = NM_SCORE_MIN          ; 変更なし
+if depth >= 1: NM_ALPHA_TBL[d] = NM_AIset_ALPHA         ; α 下限継承
+```
+
+さらに初期化直後にエントリー β-cutoff 確認を追加:
+
+```asm
+; alpha[depth] + alpha[depth-1] >= 0 → 初期 alpha が既に beta を超えている
+; → SaveBoard も ApplyMove も不要、即 NMR_RETURN
+```
+
+### 効果
+
+| 状況 | 変更前 | 変更後 |
+|---|---|---|
+| NM_AIset_ALPHA=100, alpha[0]=-10 で depth-1 入場時 | 葉1枚評価してから cutoff | 入場直後に即 cutoff |
+| 全体 | β-cutoff のみ | 完全 α-β ウィンドウ [α,β] |
+
+アセンブル確認後、実機での処理時間短縮効果を計測予定。
