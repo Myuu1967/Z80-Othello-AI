@@ -4,7 +4,7 @@
 `F:\ClaudeCode\Z80-Othello\asm\` 以下を絶対パスで参照・編集する
 （旧パス `F:\oke\Z80\ASM\オセロ\` は参照しない）
 
-**現在の作業対象: `RFCT120.ASM`（RFCT100 から分岐・NM_RECURSEバグ修正済み） — 再帰 negamax + β-cutoff + GA_RFCT100 POS_WEIGHT_D3 / GA_D2S POS_WEIGHT_D2 + mob×8/stable×8/16/-stone×8/4 評価。次は実機確認・処理時間計測（TODO #25）。**
+**現在の作業対象: `RFCT120.ASM`（RFCT100 から分岐・NM_RECURSEバグ修正済み） — 再帰 negamax + β-cutoff + GA_RFCT100 POS_WEIGHT_D3 / GA_D2S POS_WEIGHT_D2 + mob×8/stable×8/16/-stone×8/4 評価。実機確認・処理時間計測完了（TODO #25 ✓）。次のTODOへ。**
 `RFCT100.ASM` は現状維持（参照用・編集しない）。
 大会用バージョン確定済み: `F:\ClaudeCode\Z80-Othello\asm\MM2_AB_D3.ASM`
 
@@ -170,7 +170,7 @@ max score = 128 + 64 flips = 192 < 256 (byte-safe)
 22. ~~**【RFCT100】AIコア再構築**~~ ✓ 完了（2026-04-26）。再帰 negamax（depth-2/3）+ GA_D3 POS_WEIGHT + mob/stable 評価。アセンブルOK。実機確認待ち。
 23. ~~**【RFCT100】実機確認（再）**~~ RFCT100 は現状維持。RFCT120 を後継として開発継続。
 24. ~~**【RFCT120】実機確認**~~ → β-cutoff 版で再確認（下記 #25 に統合）。
-25. **【RFCT120】β-cutoff 実装・実機確認** — NM_RECURSE に β カットオフ実装済み（アセンブルOK 2026-04-30）。POS_WEIGHT_D3 も GA_RFCT100 値に更新済み。実機で AI=WHITE 動作確認 + depth-3 処理時間計測（目標: 4秒以下）。
+25. ~~**【RFCT120】β-cutoff 実装・実機確認**~~ ✓ 完了（2026-04-30）。先手・後手ともに depth-3 処理時間 4秒以内確認。
 
 ## ROM ブート化計画（オセロ完成後）
 
