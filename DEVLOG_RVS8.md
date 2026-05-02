@@ -581,7 +581,22 @@ EvalLeaf:
 
 depth-3 で空き13〜14 の局面: 本来 `stone_diff × 100` が支配すべき終盤を `pos_diff + mob×8 + stable×16` で評価 → AI が終盤戦略を完全に誤る。
 
-**修正方針**: EvalLeaf 呼び出し前に `CountEmpty` で実際の空きマス数を取得して `EMPTY_CACHE` を更新する（または NegaMax の leaf 到達時に更新）。
+**修正内容（2026-05-02実施）**: NegaMax の leaf 到達時（`NM_TOTAL_DEPTH==NM_CALL_DEPTH`）と `NMR_END`（合法手なし）の EvalLeaf 呼び出し直前に `CountEmpty` を追加し `EMPTY_CACHE` を更新。`CountEmpty` は BC・HL を PUSH/POP 保護しており D（side）も非破壊のため追加コストは64マスのスキャンのみ。
+
+```asm
+; NegaMax leaf (修正後)
+        CALL CountEmpty         ; A=実際の空きマス数 (BC,HL保持 D保持)
+        LD   (EMPTY_CACHE),A
+        CALL EvalLeaf
+        RET
+
+; NMR_END PASS (修正後)
+        LD   D,(HL)
+        CALL CountEmpty         ; A=実際の空きマス数 (BC,HL保持 D保持)
+        LD   (EMPTY_CACHE),A
+        CALL EvalLeaf
+        RET
+```
 
 ### 問題2: stone_diff ペナルティが depth-2 で過大に効く可能性（設計問題）
 

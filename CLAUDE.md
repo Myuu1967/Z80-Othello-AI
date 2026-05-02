@@ -4,7 +4,7 @@
 `F:\ClaudeCode\Z80-Othello\asm\` 以下を絶対パスで参照・編集する
 （旧パス `F:\oke\Z80\ASM\オセロ\` は参照しない）
 
-**現在の作業対象: `RFCT120.ASM`（RFCT100 から分岐・NM_RECURSEバグ修正済み） — 再帰 negamax + 完全α-β（α下限継承+エントリーβ-cutoff）+ GA_RFCT100 POS_WEIGHT_D3 / GA_D2S POS_WEIGHT_D2 + mob×8/stable×8/16/-stone×8/4 評価。D3_THRESHOLD=25（30で7秒の手が出たため変更）。次の作業: EMPTY_CACHE バグ修正（EvalLeaf が root の空きマス数でフェーズ判定 → depth-3 エンドゲーム付近で MID/LATE の誤判定）。**
+**現在の作業対象: `RFCT120.ASM`（RFCT100 から分岐・NM_RECURSEバグ修正済み） — 再帰 negamax + 完全α-β（α下限継承+エントリーβ-cutoff）+ GA_RFCT100 POS_WEIGHT_D3 / GA_D2S POS_WEIGHT_D2 + mob×8/stable×8/16/-stone×8/4 評価。D3_THRESHOLD=25（30で7秒の手が出たため変更）。EMPTY_CACHE バグ修正済み（leaf到達時に CountEmpty で実際の空きマス数を取得）。アセンブル・実機確認待ち。**
 `RFCT100.ASM` は現状維持（参照用・編集しない）。
 大会用バージョン確定済み: `F:\ClaudeCode\Z80-Othello\asm\MM2_AB_D3.ASM`
 
@@ -171,7 +171,7 @@ max score = 128 + 64 flips = 192 < 256 (byte-safe)
 23. ~~**【RFCT100】実機確認（再）**~~ RFCT100 は現状維持。RFCT120 を後継として開発継続。
 24. ~~**【RFCT120】実機確認**~~ → β-cutoff 版で再確認（下記 #25 に統合）。
 25. ~~**【RFCT120】β-cutoff 実装・実機確認**~~ ✓ 完了（2026-04-30）。先手・後手ともに depth-3 処理時間 4秒以内確認。
-26. **【RFCT120】EMPTY_CACHE バグ修正** — EvalLeaf が `EMPTY_CACHE`（root 値）でフェーズ判定するため、depth-3 でエンドゲーム付近（空き13〜14）の leaf が MID と誤判定→ stone×100 が適用されない。NegaMax の leaf 到達時（NM_TOTAL_DEPTH==NM_CALL_DEPTH）に `CountEmpty` を呼んで `EMPTY_CACHE` を更新する。Python 版は正しく実際の empty を使っているため影響なし。
+26. ~~**【RFCT120】EMPTY_CACHE バグ修正**~~ ✓ 完了（2026-05-02）。NegaMax leaf 到達時と NMR_END（PASS）の EvalLeaf 呼び出し前に `CountEmpty` を追加。アセンブル・実機確認待ち。
 27. **【RFCT120】stone_diff ペナルティ重みの見直し** — EMPTY_CACHE 修正後に対局テスト→GA 再調整。
 
 ## ROM ブート化計画（オセロ完成後）

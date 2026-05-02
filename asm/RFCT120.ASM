@@ -1852,7 +1852,9 @@ NegaMax:
         CP   B                  ; NM_TOTAL_DEPTH == NM_CALL_DEPTH?
         JR   NZ,NM_RECURSE      ; 残り深さ > 0 → 再帰
 
-        ; remaining == 0 → leaf
+        ; remaining == 0 → leaf: 実際の空きマス数でフェーズ判定
+        CALL CountEmpty         ; A=実際の空きマス数 (BC,HL保持 D保持)
+        LD   (EMPTY_CACHE),A
         CALL EvalLeaf
         RET
 
@@ -2141,6 +2143,8 @@ NMR_END:
         LD   B,0
         ADD  HL,BC
         LD   D,(HL)
+        CALL CountEmpty         ; A=実際の空きマス数 (BC,HL保持 D保持)
+        LD   (EMPTY_CACHE),A
         CALL EvalLeaf
         RET
 
