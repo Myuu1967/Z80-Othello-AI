@@ -725,3 +725,28 @@ stable 重みを 60 にするとコーナー 1 個 = 60 点 vs 石 3 枚フリ�
 stable ×100 相当（= stone_diff と等価）にすると「コーナー 1 個 = 1 石差」として評価でき、戦略的に妥当な選択に近づく可能性がある。
 
 TODO #28（stone_diff ペナルティ重みの見直し）と組み合わせて play_vs_ai.py で A/B テストし、GA 再調整を検討する。
+
+---
+
+## LATE式 stable 重み A/B テスト結果 (2026-05-03)
+
+`test_stable_weight.py` で 3 パターンを各 40 局比較（先後入れ替え込み）。
+
+| 比較 | stable×30 | 新値 | Draw |
+|---|---|---|---|
+| stable×30 vs stable×60 | 12勝 | **26勝** | 2 |
+| stable×30 vs stable×100 | 14勝 | **26勝** | 0 |
+| **stable×60 vs stable×100** | 7勝 | **33勝** | 0 |
+
+**→ stable×100 が最強（40局中33勝、82.5%）。**
+
+### 考察
+
+- stable×100 は「コーナー 1 個 = 1 石差」と等価な評価になり、Xマス選択ペナルティが十分に機能する。
+- stable×60 は現行より改善するが、stable×100 には大きく劣る。
+- オーバーフロー確認: max stable_diff×100 ≈ 64×100=6400、stone_diff×100 ≈ 6400、合計 ≤ 12800 < 32767 → 符号付き16bit で安全。
+
+### 適用済み変更
+
+- `play_vs_ai.py`: LATE 式の `stable_diff * 30` → `stable_diff * 100`
+- `RFCT120.ASM`: LATE 評価の `stable_diff × 30` → `stable_diff × 100` に変更予定（要アセンブル確認）

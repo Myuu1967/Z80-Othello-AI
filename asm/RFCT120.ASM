@@ -47,7 +47,7 @@
 ; Apr 27th, 2026 RFCT100 Step7/7: EvalLeaf mob/stable 追加
 ;   - mob_diff × mob_w / stable_diff × stable_w をフェーズ別に加算
 ;   - EARLY(>=44): mob×8, stable×8,  -stone×8   MID(>=12): mob×8, stable×16, -stone×4
-;   - LATE(<12): EL_LATE(stone_diff×100+stable×30)
+;   - LATE(<18): EL_LATE((stone_diff+stable_diff)×100)
 ;   - POS_ORDER_D3  / POS_ORDER_D2  両テーブル追加、EQU エイリアスで切替
 ;   - AIset: depth-1 固定 → 空きマス数 < D3_THRESHOLD で depth-3 / else depth-2
 ; Apr 30th, 2026 RFCT120: NM_RECURSE α下限継承 + エントリー β-cutoff追加
@@ -125,7 +125,7 @@ MOB_STABLE_CAP_LATE  EQU 1104   ; 96×4  + 24×30 (終盤: mob_w=4,  stable_w=30
 OBS_SCORE_MAX        EQU  130   ; POS_WEIGHT_MAX(66) + FLIPS_MAX(64)
 
 ; NegaMax スコア定数
-NM_SCORE_MIN    EQU  0E000H ; -8192 (LATE: stone_diff×100+stable×30, max|score|≈6480, 6480-(-8192)=14672<32767)
+NM_SCORE_MIN    EQU  0E000H ; -8192 (LATE: (stone_diff+stable_diff)×100, max|score|≈9600, 9600-(-8192)=17792<32767)
 
 
 ; =========================================================
@@ -1567,8 +1567,8 @@ NGS_D2:
 ; ---------------------------------------------------------
 ; EvalLeaf  [pos_diff + mob×mob_w + stable×stable_w - stone_diff×stone_w]
 ;   フェーズ判定: EMPTY_CACHE >= 44 → EARLY (mob×8, stable×8,  -stone×8)
-;                 EMPTY_CACHE >= 12 → MID   (mob×8, stable×16, -stone×4)
-;                 EMPTY_CACHE  < 12 → LATE  (EL_LATE: stone_diff×100 + stable×30)
+;                 EMPTY_CACHE >= 18 → MID   (mob×8, stable×16, -stone×4)
+;                 EMPTY_CACHE  < 18 → LATE  (EL_LATE: (stone_diff+stable_diff)×100)
 ;
 ; Input:  D = 評価対象 side (AI視点: 正=有利)
 ; Output: HL = score (符号付き16bit)
@@ -1752,8 +1752,8 @@ EL_STN_SUB:
         SBC  HL,DE
         RET
 
-; --- LATE(empty<12): stone_diff × 100 + stable_diff × 30 ---
-; Python eval_board の LATE 式に完全一致
+; --- LATE(empty<18): (stone_diff + stable_diff) × 100 ---
+; 同係数のため先に加算してから1回だけ×100
 EL_LATE:
         ; 石数カウント: C=my_count, E=opp_count
         LD   HL,BOARD
@@ -1785,22 +1785,9 @@ EL_STONE_NEXT:
         JR   Z,EL_LATE_SPOS
         LD   H,0FFH
 EL_LATE_SPOS:
-        ; × 100 = ×64 + ×32 + ×4
-        ADD  HL,HL          ; ×2
-        ADD  HL,HL          ; ×4
-        PUSH HL             ; save ×4
-        ADD  HL,HL          ; ×8
-        ADD  HL,HL          ; ×16
-        ADD  HL,HL          ; ×32
-        PUSH HL             ; save ×32
-        ADD  HL,HL          ; ×64
-        POP  DE
-        ADD  HL,DE          ; ×96
-        POP  DE
-        ADD  HL,DE          ; ×100
-        LD   (EV_POS_DIFF),HL
+        PUSH HL             ; save stone_diff
 
-        ; stable_diff × 30: stable_ai - stable_opp
+        ; stable_diff = stable_ai - stable_opp → HL (符号付き16bit)
         LD   A,(EV_SIDE)
         LD   D,A
         CALL CountStable        ; A = stable_ai
@@ -1821,19 +1808,21 @@ EL_LATE_SPOS:
         JR   Z,EL_LATE_STBPOS
         LD   H,0FFH
 EL_LATE_STBPOS:
-        ; × 30 = ×32 - ×2
+        POP  DE                 ; DE = stone_diff
+        ADD  HL,DE              ; HL = stone_diff + stable_diff
+        ; × 100 = ×64 + ×32 + ×4
         ADD  HL,HL          ; ×2
-        PUSH HL
         ADD  HL,HL          ; ×4
+        PUSH HL             ; save ×4
         ADD  HL,HL          ; ×8
         ADD  HL,HL          ; ×16
         ADD  HL,HL          ; ×32
+        PUSH HL             ; save ×32
+        ADD  HL,HL          ; ×64
         POP  DE
-        AND  A
-        SBC  HL,DE          ; ×30
-        EX   DE,HL
-        LD   HL,(EV_POS_DIFF)
-        ADD  HL,DE
+        ADD  HL,DE          ; ×96
+        POP  DE
+        ADD  HL,DE          ; ×100
         RET
 
 

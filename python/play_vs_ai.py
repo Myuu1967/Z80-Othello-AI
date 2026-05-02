@@ -2,8 +2,8 @@
 オセロ 人 vs AI (tkinter GUI)
 評価関数: RFCT120.ASM EvalLeaf と同一
   EARLY(empty>=44): pos_diff + mob×8 + stable×8 - stonex8
-  MID  (empty>=12): pos_diff + mob×8 + stable×16 -  stonex4
-  LATE (empty<12):  stone_diff×100 + stable×30
+  MID  (empty>=18): pos_diff + mob×8 + stable×16 -  stonex4
+  LATE (empty<18):  (stone_diff + stable_diff)×100
 POS_WEIGHT:
   depth-2: GA_D2S優勝値 (corner=114, x_sq=-54)
   depth-3: GA_RFCT100優勝値 (corner=157, x_sq=-49)  ← RFCT120.ASM と同じランタイム切替
@@ -61,7 +61,7 @@ def eval_rfct100_v2(board, side):
         stone_diff = (x - o) if side == oth.BLACK else (o - x)
         my_s  = oth.count_stable_stones(board, side)
         opp_s = oth.count_stable_stones(board, opp)
-        return stone_diff * 100 + (my_s - opp_s) * 30
+        return (stone_diff + (my_s - opp_s)) * 100
     my_pos  = sum(oth.POS_WEIGHT[i] for i in range(64) if board[i] == side)
     opp_pos = sum(oth.POS_WEIGHT[i] for i in range(64) if board[i] == opp)
     pos_diff = my_pos - opp_pos
