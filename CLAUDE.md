@@ -4,7 +4,7 @@
 `F:\ClaudeCode\Z80-Othello\asm\` 以下を絶対パスで参照・編集する
 （旧パス `F:\oke\Z80\ASM\オセロ\` は参照しない）
 
-**現在の作業対象: `RFCT120.ASM`（RFCT100 から分岐・NM_RECURSEバグ修正済み） — 再帰 negamax + β-cutoff + GA_RFCT100 POS_WEIGHT_D3 / GA_D2S POS_WEIGHT_D2 + mob×8/stable×8/16/-stone×8/4 評価。実機確認・処理時間計測完了（TODO #25 ✓）。次のTODOへ。**
+**現在の作業対象: `RFCT120.ASM`（RFCT100 から分岐・NM_RECURSEバグ修正済み） — 再帰 negamax + 完全α-β（α下限継承+エントリーβ-cutoff）+ GA_RFCT100 POS_WEIGHT_D3 / GA_D2S POS_WEIGHT_D2 + mob×8/stable×8/16/-stone×8/4 評価。D3_THRESHOLD=25（30で7秒の手が出たため変更）。実機計測予定。次の強化候補: 評価関数改善（フロンティア石等）。**
 `RFCT100.ASM` は現状維持（参照用・編集しない）。
 大会用バージョン確定済み: `F:\ClaudeCode\Z80-Othello\asm\MM2_AB_D3.ASM`
 

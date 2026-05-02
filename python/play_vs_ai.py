@@ -1,11 +1,13 @@
 """
 オセロ 人 vs AI (tkinter GUI)
-評価関数: RFCT100.ASM EvalLeaf と同一
+評価関数: RFCT120.ASM EvalLeaf と同一
   EARLY(empty>=44): pos_diff + mob×8 + stable×8 - stonex8
   MID  (empty>=12): pos_diff + mob×8 + stable×16 -  stonex4
   LATE (empty<12):  stone_diff×100 + stable×30
-POS_WEIGHT: GA_D2S優勝値 (corner=114, x_sq=-54) [optimize_weights_rfct100_v2.py 1位]
-深さ: depth-2 (空き < D3_THRESHOLD=20 で depth-3 に自動切替)
+POS_WEIGHT:
+  depth-2: GA_D2S優勝値 (corner=114, x_sq=-54)
+  depth-3: GA_RFCT100優勝値 (corner=157, x_sq=-49)  ← RFCT120.ASM と同じランタイム切替
+深さ: 空き < D3_THRESHOLD=25 → depth-3, else depth-2  (RFCT120.ASM に合わせて変更)
 
 起動:
     cd python
@@ -19,9 +21,10 @@ import time
 import othello_mm3_ab as oth
 
 # =========================================================
-# AI 設定
+# AI 設定  (RFCT120.ASM と同一)
 # =========================================================
-GA_D2S_TABLE = [
+# depth-2 用: GA_D2S優勝 (optimize_weights_rfct100_v2.py 1位)
+POS_WEIGHT_D2 = [
     114,  -5, -16,  -7,  -7, -16,  -5, 114,
      -5, -54, -16,   7,   7, -16, -54,  -5,
     -16, -16,   6,   2,   2,   6, -16, -16,
@@ -31,9 +34,19 @@ GA_D2S_TABLE = [
      -5, -54, -16,   7,   7, -16, -54,  -5,
     114,  -5, -16,  -7,  -7, -16,  -5, 114,
 ]
-oth.POS_WEIGHT = GA_D2S_TABLE
+# depth-3 用: GA_RFCT100優勝 (optimize_weights_d3_v2eval.py 1位)
+POS_WEIGHT_D3 = [
+    157, -12,   2,   5,   5,   2, -12, 157,
+    -12, -49, -16,  -4,  -4, -16, -49, -12,
+      2, -16, -19, -15, -15, -19, -16,   2,
+      5,  -4, -15, -24, -24, -15,  -4,   5,
+      5,  -4, -15, -24, -24, -15,  -4,   5,
+      2, -16, -19, -15, -15, -19, -16,   2,
+    -12, -49, -16,  -4,  -4, -16, -49, -12,
+    157, -12,   2,   5,   5,   2, -12, 157,
+]
 
-D3_THRESHOLD = 20  # 空き < 20 → depth-3 に切替
+D3_THRESHOLD = 25  # 空き < 25 → depth-3 に切替 (RFCT120.ASM D3_THRESHOLD=25)
 
 
 def eval_rfct100_v2(board, side):
@@ -68,6 +81,7 @@ oth.eval_board = eval_rfct100_v2
 def ai_move(board, side):
     empty  = board.count(oth.EMPTY)
     depth  = 3 if empty < D3_THRESHOLD else 2
+    oth.POS_WEIGHT = POS_WEIGHT_D3 if depth == 3 else POS_WEIGHT_D2
     pos, score = oth.ai_choose_move(board, side, depth=depth)
     return pos, score, depth
 
