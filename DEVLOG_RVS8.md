@@ -550,3 +550,60 @@ Z80 10MHz・4秒以内という制約のもとでは **depth-2/3 ハイブリッ
 - フロンティア石ペナルティ（空きマス隣接石は裏返されやすい）
 - 奇数偶数理論（終盤の手番有利）
 - mob/stable 重みの再 GA 最適化
+
+---
+
+## 対局後バグ分析：「相手有利な手」の原因精査 (2026-05-02)
+
+### 問題1: EMPTY_CACHE バグ（致命的・depth-3 エンドゲーム付近）
+
+`EMPTY_CACHE` は `AIset` 冒頭で1回だけ取得され、再帰中に更新されない。
+`EvalLeaf` はこの root 値をフェーズ判定に使うため、leaf の実際の空きマス数と乖離する。
+
+```asm
+AIset:
+    CALL CountEmpty
+    LD   (EMPTY_CACHE),A    ; root値で固定 ← 問題
+...
+EvalLeaf:
+    LD   A,(EMPTY_CACHE)    ; root値のまま使用
+    CP   12
+    JP   C,EL_LATE
+```
+
+影響範囲:
+
+| 探索 | root empty | leaf empty | フェーズ誤認 | 影響度 |
+|---|---|---|---|---|
+| depth-2 | 25〜43 | 23〜41 | なし | 無影響 |
+| depth-2 | 44〜46 | 42〜44 | EARLY→MID | stable_w 8 vs 16 の取り違え（軽微） |
+| **depth-3** | **13〜14** | **10〜11** | **MID→LATE** | **stone×100 が適用されず致命的** |
+
+depth-3 で空き13〜14 の局面: 本来 `stone_diff × 100` が支配すべき終盤を `pos_diff + mob×8 + stable×16` で評価 → AI が終盤戦略を完全に誤る。
+
+**修正方針**: EvalLeaf 呼び出し前に `CountEmpty` で実際の空きマス数を取得して `EMPTY_CACHE` を更新する（または NegaMax の leaf 到達時に更新）。
+
+### 問題2: stone_diff ペナルティが depth-2 で過大に効く可能性（設計問題）
+
+`EvalLeaf` の MID フェーズ評価: `pos_diff + mob_diff×8 + stable_diff×16 - stone_diff×4`
+
+石を多く取るほどペナルティが大きくなる設計のため、積極的に石を取るべき局面で消極的な手を選ぶ可能性がある。特に序盤（EARLY: `-stone_diff×8`）は重みが大きい。
+
+| 手 | pos_diff | mob×8 | stable×16 | stone×4 | 合計（例）|
+|---|---|---|---|---|---|
+| コーナー取り（net +6石） | +90 | −40 | +16 | **−24** | +42 |
+| 安全手（net ±0石） | +5 | +24 | 0 | 0 | +29 |
+
+コーナーが勝るが差が縮まり、配置次第では逆転しうる。
+
+### 問題3: PASS 処理の Python vs Z80 不整合（軽微）
+
+Z80 の `NMR_END`（合法手なし）: `EvalLeaf` を呼んで即リターン（相手手番を探索しない）。  
+Python の `negamax`: `return -negamax(board, depth, -beta, -alpha, opp)` で depth 消費なく相手手番を継続。  
+PASS が絡む局面での評価がズレる。
+
+### 優先対処順
+
+1. **EMPTY_CACHE バグ修正**（depth-3 エンドゲームに直接影響）
+2. **stone_diff 重みの見直し**（対局観察→GA 再調整）
+3. **PASS 処理の Python 互換化**（後回し可）
