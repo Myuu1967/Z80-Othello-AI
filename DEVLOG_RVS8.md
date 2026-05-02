@@ -619,6 +619,54 @@ PASS が絡む局面での評価がズレる。
 
 ### 優先対処順
 
-1. **EMPTY_CACHE バグ修正**（depth-3 エンドゲームに直接影響）
-2. **stone_diff 重みの見直し**（対局観察→GA 再調整）
-3. **PASS 処理の Python 互換化**（後回し可）
+1. **EMPTY_CACHE バグ修正**（depth-3 エンドゲームに直接影響）→ ✓ 完了（2026-05-02）
+2. **MID_GAME 閾値引き上げ（12→18）**（depth-3 leaf の MID 式破綻対策）→ ✓ 完了（2026-05-02）
+3. **stone_diff 重みの見直し**（対局観察→GA 再調整）
+4. **PASS 処理の Python 互換化**（後回し可）
+
+---
+
+## MID_GAME 閾値 12→18 変更（depth-3 leaf 評価破綻対策）(2026-05-02)
+
+### 発端
+
+実機対局ログ（空き=19, depth-3）で AI が G2 を選択し Eval:200 を出力。
+Human が H2 で応じると X:39 O:8 に激変。Eval の符号が完全に誤っていた。
+
+### 根本原因
+
+depth-3 のとき leaf_empty = root_empty - 3。root_empty=19 → leaf_empty=16。
+
+leaf_empty=16 は旧 MID_GAME=12 の閾値では MID フェーズ。
+MID フェーズ評価式 `pos_diff + mob×8 + stable×16 - stone_diff×4` が leaf で O:10, X:53 の場合:
+
+| 項 | 値 | 問題 |
+|---|---|---|
+| `pos_diff` | **+550** | X の多数の内側石（負値 POS_WEIGHT）が O 側に加算 |
+| `- stone_diff×4` = `-(-43×4)` | **+172** | 石数劣勢（負値 stone_diff）がペナルティ逆転でボーナスに |
+| 合計 | **≈+600** | O が圧倒的に負けている局面なのに大正値 |
+
+LATE フェーミュラなら: `-43 × 100 = -4300`（正しく壊滅評価）。
+
+MID 式は 2 つの要因で石数大差局面に対し誤った評価を返す:
+1. 負値 POS_WEIGHT テーブル使用時、石数が多い側の内側石が相手の pos_diff をかさ上げする
+2. `-stone_diff×w` は石数劣勢（stone_diff < 0）をペナルティでなくボーナスに変換する
+
+### 修正内容
+
+`MID_GAME EQU 12` → `MID_GAME EQU 18`（RFCT120.ASM）  
+`CP MID_GAME` を `EvalLeaf` の LATE 判定箇所に適用。  
+`play_vs_ai.py` の `if empty < 12:` → `if empty < MID_GAME (=18):` に変更。
+
+| root_empty | leaf_empty | 修正前 | 修正後 |
+|---|---|---|---|
+| 14〜17 | 11〜14 | MID/LATE混在 | **LATE** |
+| 18〜20 | 15〜17 | **MID（誤）** | **LATE（正）** |
+| 21〜24 | 18〜21 | MID | MID（境界） |
+| 25〜（depth-2） | 23〜 | MID | MID（無影響）|
+
+### EMPTY_CACHE 修正との関係
+
+EMPTY_CACHE 修正（2026-05-02）を先行適用済み。  
+leaf で `CountEmpty` を呼ぶため leaf の実際の空きマス数でフェーズ判定される。  
+→ MID_GAME=18 と組み合わせることで root_empty=19 の leaf_empty=16 が正しく LATE に判定される。

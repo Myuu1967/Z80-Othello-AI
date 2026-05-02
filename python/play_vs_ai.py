@@ -49,11 +49,13 @@ POS_WEIGHT_D3 = [
 D3_THRESHOLD = 25  # 空き < 25 → depth-3 に切替 (RFCT120.ASM D3_THRESHOLD=25)
 
 
+MID_GAME = 18  # LATE/MID 境界 (RFCT120.ASM MID_GAME EQU 18 と同値)
+
 def eval_rfct100_v2(board, side):
     """RFCT100 v2: EARLY/MID に stone_diff ペナルティ追加"""
     empty = board.count(oth.EMPTY)
     opp   = 3 - side
-    if empty < 12:
+    if empty < MID_GAME:
         x = board.count(oth.BLACK)
         o = board.count(oth.WHITE)
         stone_diff = (x - o) if side == oth.BLACK else (o - x)

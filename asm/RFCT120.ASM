@@ -112,7 +112,7 @@ ENDGAME_THRESHOLD  EQU 0    ; 終盤完全読み無効
 
 ; フェーズ閾値 (CountEmpty の値で判定)
 EARLY_GAME  EQU 44          ; 空き >= 44: 序盤
-MID_GAME    EQU 12          ; 空き >= 12: 中盤、else: 終盤
+MID_GAME    EQU 18          ; 空き >= 18: 中盤、else: 終盤（depth-3 leaf評価ズレ対策で12→18に変更）
 
 ; depth切り替え閾値
 D3_THRESHOLD EQU 25         ; 空き < 25 → depth-3 / 空き >= 25 → depth-2
@@ -1578,9 +1578,11 @@ EvalLeaf:
         LD   A,D
         LD   (EV_SIDE),A    ; 評価対象 side を保存
 
-        ; LATE(empty<12): Python互換 stone_diff×100 + stable×30
+        ; LATE(empty<MID_GAME=18): stone_diff×100 + stable×30
+        ;   12→18に変更: depth-3 leaf(root-3)でMID式が破綻するのを防ぐ
+        ;   POS_WEIGHT負値+石数劣勢ボーナス化によりeval値が大幅に誤る問題の対処
         LD   A,(EMPTY_CACHE)
-        CP   12
+        CP   MID_GAME
         JP   C,EL_LATE
 
         LD   HL,0000H
