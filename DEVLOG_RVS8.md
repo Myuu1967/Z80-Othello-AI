@@ -748,5 +748,12 @@ TODO #28（stone_diff ペナルティ重みの見直し）と組み合わせて 
 
 ### 適用済み変更
 
-- `play_vs_ai.py`: LATE 式の `stable_diff * 30` → `stable_diff * 100`
-- `RFCT120.ASM`: LATE 評価の `stable_diff × 30` → `stable_diff × 100` に変更予定（要アセンブル確認）
+同係数（×100）なので先に加算してから1回乗算する形に簡略化。Z80 で乗算1回削減、`EV_POS_DIFF` への一時保存も不要になった。
+
+- `play_vs_ai.py`: `stone_diff * 100 + (my_s - opp_s) * 30` → `(stone_diff + (my_s - opp_s)) * 100`
+- `RFCT120.ASM`: EL_LATE を `stone_diff×100` + `stable×30` の2段構成 → `(stone_diff + stable_diff)` を加算後に1回 `×100`（アセンブル・実機確認待ち）
+
+#### ×100を省けない理由（メモ）
+
+PASS（NMR_END）で即 EvalLeaf を返す場合、empty が MID 相当でも LATE 式が呼ばれることがある。  
+×100 を省くと MID スコア（±1000 程度）と LATE スコア（±64 程度）の比較が壊れるため維持。
