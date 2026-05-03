@@ -4,9 +4,9 @@
 `F:\ClaudeCode\Z80-Othello\asm\` 以下を絶対パスで参照・編集する
 （旧パス `F:\oke\Z80\ASM\オセロ\` は参照しない）
 
-**現在の作業対象: `RFCT120.ASM`（RFCT100 から分岐・NM_RECURSEバグ修正済み） — 再帰 negamax + 完全α-β（α下限継承+エントリーβ-cutoff）+ GA_RFCT100 POS_WEIGHT_D3 / GA_D2S POS_WEIGHT_D2 + mob×8/stable×8/16/-stone×8/4 評価。D3_THRESHOLD=25。EMPTY_CACHE バグ修正済み + MID_GAME 12→18 変更済み（depth-3 leaf での MID 式破綻対策）+ LATE式を (stone_diff+stable_diff)×100 に変更済み（A/Bテスト stable×100 が stable×30 に対して 65% 優勝）。アセンブル・実機確認待ち。**
+**現在の作業対象: `RFCT120.ASM`（RFCT100 から分岐・NM_RECURSEバグ修正済み） — 再帰 negamax + 完全α-β（α下限継承+エントリーβ-cutoff）+ GA_RFCT100 POS_WEIGHT_D3 / GA_D2S POS_WEIGHT_D2 + mob×8/stable×8/16/-stone×8/4 評価。D3_THRESHOLD=20。EMPTY_CACHE バグ修正済み + MID_GAME 12→18 変更済み + LATE式を (stone_diff+stable_diff)×100 に変更済み。実機確認済み・大会出場候補。**
 `RFCT100.ASM` は現状維持（参照用・編集しない）。
-大会用バージョン確定済み: `F:\ClaudeCode\Z80-Othello\asm\MM2_AB_D3.ASM`
+大会用バージョン候補: `F:\ClaudeCode\Z80-Othello\asm\RFCT120.ASM`（旧確定版: `MM2_AB_D3.ASM`）
 
 ## 開発フロー（Python版を正とする）
 
@@ -86,7 +86,7 @@ RVS8_GREEDY.ASM
 - 先後手選択: SW0=先手(黒), SW2=後手(白)、SIOA '1'/'2' でも選択可
 - PIOB スイッチ入力（SW0-SW4, Mode3）
 - PIOA D7 → Pico GPIO15 AI処理時間計測
-- 処理時間: 先手・後手ともに **4秒以下**（D3_THRESHOLD=25）
+- 処理時間: 先手・後手ともに **4秒以下**（D3_THRESHOLD=20）
 
 ## 評価式 (depth-2)
 
@@ -174,7 +174,7 @@ max score = 128 + 64 flips = 192 < 256 (byte-safe)
 26. ~~**【RFCT120】EMPTY_CACHE バグ修正**~~ ✓ 完了（2026-05-02）。NegaMax leaf 到達時と NMR_END（PASS）の EvalLeaf 呼び出し前に `CountEmpty` を追加。アセンブル・実機確認待ち。
 27. ~~**【RFCT120】MID_GAME 閾値引き上げ（12→18）**~~ ✓ 完了（2026-05-02）。depth-3 leaf での MID 式破綻（pos_diff かさ上げ + stone_diff ボーナス化）の対策。EMPTY_CACHE 修正と組み合わせて機能。アセンブル・実機確認待ち。
 28. ~~**【RFCT120】stone_diff ペナルティ重みの見直し**~~ ✓ 完了（2026-05-03）。LATE 式を `(stone_diff+stable_diff)×100` に変更（A/Bテストで stable×100 が stable×30 に対し 65% 優勝、stable×60 に対し 82.5% 優勝）。アセンブル・実機確認待ち。
-29. **【RFCT120】実機確認（EMPTY_CACHE+MID_GAME+LATE式変更まとめて）** — #26/#27/#28 の変更を一括アセンブル・実機動作確認する。
+29. ~~**【RFCT120】実機確認（EMPTY_CACHE+MID_GAME+LATE式変更まとめて）**~~ ✓ 完了（2026-05-03）。D3_THRESHOLD=20 に調整（25だと5秒超え発生）。実機対局で明確なバグなし確認。大会出場候補に昇格。
 
 ## ROM ブート化計画（オセロ完成後）
 

@@ -757,3 +757,35 @@ TODO #28（stone_diff ペナルティ重みの見直し）と組み合わせて 
 
 PASS（NMR_END）で即 EvalLeaf を返す場合、empty が MID 相当でも LATE 式が呼ばれることがある。  
 ×100 を省くと MID スコア（±1000 程度）と LATE スコア（±64 程度）の比較が壊れるため維持。
+
+---
+
+## RFCT120 実機確認・大会出場候補確定 (2026-05-03)
+
+### D3_THRESHOLD 25→20 調整
+
+D3_THRESHOLD=25 で実機計測したところ 5 秒超えの局面が発生したため 20 に引き下げ。
+
+| 閾値 | 状態 |
+|---|---|
+| 25 | 5秒超え発生 |
+| **20** | **4秒以下確認 ✓** |
+
+### 実機対局確認
+
+EMPTY_CACHE バグ修正 + MID_GAME=18 + LATE 式 `(stone_diff+stable_diff)×100` の変更を一括で実機対局テスト。明確なバグ・異常手なし。
+
+辺に隣接する手についての考察: depth-2 の negamax が相手を C マス・X マスに誘導しようとする正当な思考であることを確認（常時ではなく局面依存）。
+
+### 段落まとめ
+
+**RFCT120.ASM を大会出場候補バージョンに昇格。**
+
+| 項目 | 内容 |
+|---|---|
+| 探索 | 再帰 negamax + 完全α-β（α下限継承+エントリーβ-cutoff） |
+| POS_WEIGHT | depth-2: GA_D2S / depth-3: GA_RFCT100（ランタイム切替） |
+| 評価式 | EARLY: pos+mob×8+stable×8-stone×8 / MID: pos+mob×8+stable×16-stone×4 / LATE: (stone+stable)×100 |
+| depth 切替 | 空き < 20 → depth-3 / ≥ 20 → depth-2 |
+| 処理時間 | 先手・後手ともに 4 秒以下確認 |
+| バグ | なし（NM_RECURSE バグ・EMPTY_CACHE バグ・MID 式破綻すべて修正済み） |
