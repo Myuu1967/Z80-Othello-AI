@@ -47,7 +47,7 @@ POS_WEIGHT_D3 = [
 ]
 
 D3_THRESHOLD = 25  # 空き < 25 → depth-3 に切替 (RFCT120.ASM D3_THRESHOLD=25)
-
+EG_THRESHOLD = 12  # 空き < 12 → 終盤完全読み（oth.EG_THRESHOLD と同値）
 
 MID_GAME = 18  # LATE/MID 境界 (RFCT120.ASM MID_GAME EQU 18 と同値)
 
@@ -81,8 +81,13 @@ oth.eval_board = eval_rfct100_v2
 
 
 def ai_move(board, side):
-    empty  = board.count(oth.EMPTY)
-    depth  = 3 if empty < D3_THRESHOLD else 2
+    empty = board.count(oth.EMPTY)
+    if empty < EG_THRESHOLD:
+        # 終盤完全読み: 石差を最大化
+        oth.POS_WEIGHT = POS_WEIGHT_D3  # move ordering 用（EvalLeaf は使わない）
+        pos, score = oth.ai_choose_move_eg(board, side)
+        return pos, score, 'EG'
+    depth = 3 if empty < D3_THRESHOLD else 2
     oth.POS_WEIGHT = POS_WEIGHT_D3 if depth == 3 else POS_WEIGHT_D2
     pos, score = oth.ai_choose_move(board, side, depth=depth)
     return pos, score, depth
@@ -345,7 +350,11 @@ class OthelloApp:
         self.board    = oth.apply_move(self.board, pos, self.ai_side)
         self.last_pos = pos
         pos_str       = oth.pos_to_str(pos)
-        eval_str      = f'AI → {pos_str}  評価値: {score:+d}  (depth-{depth})'
+        if depth == 'EG':
+            score_str = f'石差: {score:+d}  (完全読み)'
+        else:
+            score_str = f'評価値: {score:+d}  (depth-{depth})'
+        eval_str = f'AI → {pos_str}  {score_str}'
         self._advance_turn(eval_str)
 
     # ----------------------------------------------------------

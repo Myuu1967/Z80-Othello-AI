@@ -174,8 +174,9 @@ def print_counts(board):
 # ai_choose_move: 最善手を返す。
 # =========================================================
 
-EARLY_GAME = 44  # empty >= 44: 序盤
-MID_GAME   = 12  # empty >= 12: 中盤、else: 終盤
+EARLY_GAME   = 44  # empty >= 44: 序盤
+MID_GAME     = 12  # empty >= 12: 中盤、else: 終盤
+EG_THRESHOLD = 12  # empty < EG_THRESHOLD → 終盤完全読み
 
 def eval_board(board, side):
     """Static evaluation from side's perspective (leaf nodes).
@@ -250,6 +251,73 @@ def ai_choose_move(board, side, depth=3):
     for pos in get_legal_moves_ordered(board, side):
         new_board = apply_move(board, pos, side)
         score = -negamax(new_board, depth - 1, -beta, -alpha, opp)
+        if score > best_score:
+            best_score = score
+            best_moves = [pos]
+            alpha = score
+        elif score == best_score:
+            best_moves.append(pos)
+
+    best_pos = random.choice(best_moves) if best_moves else -1
+    return best_pos, best_score
+
+
+# =========================================================
+# 終盤完全読み (Endgame Solver)
+#
+# negamax_eg: 深さ制限なしで全手を読み切る。
+#             スコア = 最終石差（side視点。+なら勝ち）。
+# ai_choose_move_eg: 最善手と石差スコアを返す。
+# =========================================================
+
+def negamax_eg(board, alpha, beta, side):
+    """
+    終盤完全読み negamax α-β。
+    Returns: 石差スコア（side視点。勝ち=正、負け=負、引き分け=0）。
+    PASS は depth 消費なし（強制手）。
+    """
+    opp = 3 - side
+    legal = get_legal_moves(board, side)
+
+    if not legal:
+        opp_legal = get_legal_moves(board, opp)
+        if not opp_legal:
+            # 両者パス = ゲーム終了
+            x, o = count_stones(board)
+            diff = (x - o) if side == BLACK else (o - x)
+            return diff
+        # 自分だけパス: 相手番に移行（depth 消費なし）
+        return -negamax_eg(board, -beta, -alpha, opp)
+
+    best = -65  # 石差の最小値 (-64) より小さい番兵
+    for pos in get_legal_moves_ordered(board, side):
+        nb = apply_move(board, pos, side)
+        score = -negamax_eg(nb, -beta, -alpha, opp)
+        if score > best:
+            best = score
+        if best > alpha:
+            alpha = best
+        if alpha >= beta:
+            break  # β-cutoff
+    return best
+
+
+def ai_choose_move_eg(board, side):
+    """
+    終盤完全読みで最善手を選択。
+    Returns: (pos, stone_diff)
+      pos        : 最善手インデックス
+      stone_diff : 最終石差（side視点。正=勝ち、負=負け、0=引き分け）
+    """
+    opp = 3 - side
+    alpha = -65
+    beta  = 65
+    best_score = -65
+    best_moves = []
+
+    for pos in get_legal_moves_ordered(board, side):
+        nb = apply_move(board, pos, side)
+        score = -negamax_eg(nb, -beta, -alpha, opp)
         if score > best_score:
             best_score = score
             best_moves = [pos]

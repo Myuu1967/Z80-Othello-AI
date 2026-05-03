@@ -789,3 +789,34 @@ EMPTY_CACHE バグ修正 + MID_GAME=18 + LATE 式 `(stone_diff+stable_diff)×100
 | depth 切替 | 空き < 20 → depth-3 / ≥ 20 → depth-2 |
 | 処理時間 | 先手・後手ともに 4 秒以下確認 |
 | バグ | なし（NM_RECURSE バグ・EMPTY_CACHE バグ・MID 式破綻すべて修正済み） |
+
+---
+
+## Python 終盤完全読み実装 (2026-05-03)
+
+### 追加関数 (othello_mm3_ab.py)
+
+| 関数 | 説明 |
+|---|---|
+| `negamax_eg(board, alpha, beta, side)` | 深さ制限なし negamax α-β。石差（side視点）を返す |
+| `ai_choose_move_eg(board, side)` | 最善手と最終石差スコアを返す |
+
+### 探索フロー (play_vs_ai.py)
+
+```
+空き ≥ 25 → depth-2 + POS_WEIGHT_D2
+空き ≥ 12 → depth-3 + POS_WEIGHT_D3
+空き <  12 → negamax_eg（終盤完全読み・石差最大化）
+```
+
+### 実装ポイント
+
+- スコア範囲: [-64, +64]（石差の実値）
+- PASS 処理: 深さを消費せず相手番に移行（標準 negamax と同じ）
+- ゲーム終了判定: 両者パスで `count_stones` の石差を返す
+- move ordering: `POS_WEIGHT_D3` 降順（コーナー優先の探索順序を維持）
+- GUI 表示: `石差: +N (完全読み)` と表示（depth 番号ではなく EG と識別）
+
+### 動作確認
+
+空き 4 手・8 手の局面でテスト済み。`ai_choose_move_eg` と `ai_choose_move(depth=3)` が同じ最善手を選択することを確認。
