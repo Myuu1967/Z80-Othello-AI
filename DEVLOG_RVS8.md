@@ -792,6 +792,37 @@ EMPTY_CACHE バグ修正 + MID_GAME=18 + LATE 式 `(stone_diff+stable_diff)×100
 
 ---
 
+## RFCT150.ASM 作成・終盤完全読み有効化 (2026-05-03)
+
+### 概要
+
+RFCT120.ASM をコピーして RFCT150.ASM を作成し、`SearchFull` / `AIset_EG` を有効化。
+
+### 変更内容
+
+| 変更 | 内容 |
+|---|---|
+| `ENDGAME_THRESHOLD EQU 2` | 空き ≤ 2 で完全読みを発動（まず動作確認用の保守的な値）|
+| `EG_GetSaveAddr` 修正 | 8bit `SLA×6` を 16bit `ADD HL,HL×6` に変更。depth≥6 で BOARD_EG_SAVES のアドレスが重複するバグを修正 |
+| `SearchFull` 入口 alpha 初期化 | `SF_ALPHA_TBL[EG_DEPTH]=81H` を入口で実施。PASS 経由時に alpha が未初期化のまま β-cutoff が誤発火するバグを修正 |
+| `SF_HasMove` ループ置換 | 行・列順スキャン（`SF_ROW/SF_COL`）→ `POS_ORDER_D3` 順ループ（`SF_OLOOP`）に変更。コーナー優先でα-β効率向上 |
+
+### 修正したバグ
+
+**バグ1: EG_GetSaveAddr オーバーフロー**
+- depth 6 以降で `(depth-2)*64 > 255` が 8bit に収まらず、depth 6→2、7→3 のバッファが衝突していた
+- 16bit 演算 (`LD L,A; LD H,0; ADD HL,HL ×6`) で修正
+
+**バグ2: PASS 時 alpha 未初期化**
+- `SF_HasMove` 内でのみ `SF_ALPHA_TBL[depth]=81H` を初期化していたため、PASS で depth が増加した場合に alpha が初期化されないまま β-cutoff が誤発火していた
+- `SearchFull` 入口に移動して常に初期化されるよう修正
+
+### 実機確認待ち
+
+アセンブルして動作確認予定。ENDGAME_THRESHOLD は動作確認後に引き上げを検討。
+
+---
+
 ## Python 終盤完全読み実装 (2026-05-03)
 
 ### 追加関数 (othello_mm3_ab.py)
