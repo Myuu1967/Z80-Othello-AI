@@ -1,13 +1,13 @@
 """
 オセロ 人 vs AI (tkinter GUI)
-評価関数: RFCT120.ASM EvalLeaf と同一
-  EARLY(empty>=44): pos_diff + mob×8 + stable×8 - stonex8
-  MID  (empty>=18): pos_diff + mob×8 + stable×16 -  stonex4
+評価関数: RFCT150.ASM EvalLeaf と同一 (half_all ウェイト)
+  EARLY(empty>=44): pos_diff + mob×4 + stable×4 - stone×4
+  MID  (empty>=18): pos_diff + mob×4 + stable×8  - stone×2
   LATE (empty<18):  (stone_diff + stable_diff)×100
 POS_WEIGHT:
   depth-2: GA_D2S優勝値 (corner=114, x_sq=-54)
-  depth-3: GA_RFCT100優勝値 (corner=157, x_sq=-49)  ← RFCT120.ASM と同じランタイム切替
-深さ: 空き < D3_THRESHOLD=25 → depth-3, else depth-2  (RFCT120.ASM に合わせて変更)
+  depth-3: GA_D2S優勝値 (corner=114, x_sq=-54)  ← optimize_weights_rfct150.py で再確認
+深さ: 空き < D3_THRESHOLD=20 → depth-3, else depth-2  (RFCT150.ASM と同期)
 
 起動:
     cd python
@@ -34,25 +34,25 @@ POS_WEIGHT_D2 = [
      -5, -54, -16,   7,   7, -16, -54,  -5,
     114,  -5, -16,  -7,  -7, -16,  -5, 114,
 ]
-# depth-3 用: GA_RFCT100優勝 (optimize_weights_d3_v2eval.py 1位)
+# depth-3 用: GA_D2S優勝 (optimize_weights_rfct150.py 1位, half_all評価で再確認 2026-05-04)
 POS_WEIGHT_D3 = [
-    157, -12,   2,   5,   5,   2, -12, 157,
-    -12, -49, -16,  -4,  -4, -16, -49, -12,
-      2, -16, -19, -15, -15, -19, -16,   2,
-      5,  -4, -15, -24, -24, -15,  -4,   5,
-      5,  -4, -15, -24, -24, -15,  -4,   5,
-      2, -16, -19, -15, -15, -19, -16,   2,
-    -12, -49, -16,  -4,  -4, -16, -49, -12,
-    157, -12,   2,   5,   5,   2, -12, 157,
+    114,  -5, -16,  -7,  -7, -16,  -5, 114,
+     -5, -54, -16,   7,   7, -16, -54,  -5,
+    -16, -16,   6,   2,   2,   6, -16, -16,
+     -7,   7,   2, -12, -12,   2,   7,  -7,
+     -7,   7,   2, -12, -12,   2,   7,  -7,
+    -16, -16,   6,   2,   2,   6, -16, -16,
+     -5, -54, -16,   7,   7, -16, -54,  -5,
+    114,  -5, -16,  -7,  -7, -16,  -5, 114,
 ]
 
-D3_THRESHOLD = 25  # 空き < 25 → depth-3 に切替 (RFCT120.ASM D3_THRESHOLD=25)
+D3_THRESHOLD = 20  # 空き < 20 → depth-3 に切替 (RFCT150.ASM D3_THRESHOLD=20 と同期)
 EG_THRESHOLD = 12  # 空き < 12 → 終盤完全読み（oth.EG_THRESHOLD と同値）
 
 MID_GAME = 18  # LATE/MID 境界 (RFCT120.ASM MID_GAME EQU 18 と同値)
 
-def eval_rfct100_v2(board, side):
-    """RFCT100 v2: EARLY/MID に stone_diff ペナルティ追加"""
+def eval_rfct150(board, side):
+    """RFCT150 half_all: mob×4/4, stable×4/8, stone×4/2"""
     empty = board.count(oth.EMPTY)
     opp   = 3 - side
     if empty < MID_GAME:
@@ -73,11 +73,11 @@ def eval_rfct100_v2(board, side):
     o = board.count(oth.WHITE)
     stone_diff = (x - o) if side == oth.BLACK else (o - x)
     if empty >= 44:
-        return pos_diff + mob_diff * 8 + stable_diff * 8 - stone_diff * 8
+        return pos_diff + mob_diff * 4 + stable_diff * 4 - stone_diff * 4
     else:
-        return pos_diff + mob_diff * 8 + stable_diff * 16 - stone_diff * 4
+        return pos_diff + mob_diff * 4 + stable_diff * 8 - stone_diff * 2
 
-oth.eval_board = eval_rfct100_v2
+oth.eval_board = eval_rfct150
 
 
 def ai_move(board, side):

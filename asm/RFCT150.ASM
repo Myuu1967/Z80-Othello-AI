@@ -48,7 +48,7 @@
 ;   - POS_WEIGHT_D3 / POS_WEIGHT_D2 両テーブル追加、EQU エイリアスで切替
 ; Apr 27th, 2026 RFCT100 Step7/7: EvalLeaf mob/stable 追加
 ;   - mob_diff × mob_w / stable_diff × stable_w をフェーズ別に加算
-;   - EARLY(>=44): mob×8, stable×8,  -stone×8   MID(>=12): mob×8, stable×16, -stone×4
+;   - EARLY(>=44): mob×4, stable×4,  -stone×4   MID(>=18): mob×4, stable×8, -stone×2
 ;   - LATE(<18): EL_LATE((stone_diff+stable_diff)×100)
 ;   - POS_ORDER_D3  / POS_ORDER_D2  両テーブル追加、EQU エイリアスで切替
 ;   - AIset: depth-1 固定 → 空きマス数 < D3_THRESHOLD で depth-3 / else depth-2
@@ -186,19 +186,20 @@ STONE_CHAR:
 ; 切替: 下部の EQU エイリアスを _D2 or _D3 に変更するだけ。
 ; ---------------------------------------------------------
 
-; --- GA_RFCT100優勝テーブル (optimize_weights_d3_v2eval.py 1位, depth-3×v2eval, 2026-04-30) ---
-;   corner=157, c_sq=-12, edge_near=2, edge_ctr=5, x_sq=-49, near_x=-16
-;   inner_edge=-4, inner=-19, inner2=-15, center=-24
+; --- GA_D2S優勝テーブル (optimize_weights_rfct150.py 1位, 2026-05-04) ---
+;   half_all評価 (mob×4/4, stb×4/8, stn×4/2) でGA再最適化: 既存GA_D2Sが優勝
+;   corner=114, c_sq=-5, edge_near=-16, edge_ctr=-7, x_sq=-54, near_x=-16
+;   inner_edge=7, inner=6, inner2=2, center=-12
 POS_WEIGHT_D3:
         ;       A    B    C    D    E    F    G    H
-        DEFB  157, -12,   2,   5,   5,   2, -12, 157  ; 1
-        DEFB  -12, -49, -16,  -4,  -4, -16, -49, -12  ; 2
-        DEFB    2, -16, -19, -15, -15, -19, -16,   2  ; 3
-        DEFB    5,  -4, -15, -24, -24, -15,  -4,   5  ; 4
-        DEFB    5,  -4, -15, -24, -24, -15,  -4,   5  ; 5
-        DEFB    2, -16, -19, -15, -15, -19, -16,   2  ; 6
-        DEFB  -12, -49, -16,  -4,  -4, -16, -49, -12  ; 7
-        DEFB  157, -12,   2,   5,   5,   2, -12, 157  ; 8
+        DEFB  114,  -5, -16,  -7,  -7, -16,  -5, 114  ; 1
+        DEFB   -5, -54, -16,   7,   7, -16, -54,  -5  ; 2
+        DEFB  -16, -16,   6,   2,   2,   6, -16, -16  ; 3
+        DEFB   -7,   7,   2, -12, -12,   2,   7,  -7  ; 4
+        DEFB   -7,   7,   2, -12, -12,   2,   7,  -7  ; 5
+        DEFB  -16, -16,   6,   2,   2,   6, -16, -16  ; 6
+        DEFB   -5, -54, -16,   7,   7, -16, -54,  -5  ; 7
+        DEFB  114,  -5, -16,  -7,  -7, -16,  -5, 114  ; 8
 
 ; --- GA_D2S優勝テーブル (optimize_weights_rfct100_v2.py 1位, 2026-04-29) ---
 ;   corner=114, x_sq=-54, c_sq=-5, near_x=-16, edge_near=-16, edge_ctr=-7
@@ -217,27 +218,26 @@ POS_WEIGHT_D2:
 ; --- ムーブオーダリング用: POS_WEIGHT降順のマスoffset一覧 (各64バイト) ---
 ; offset = row*8 + col  (row=0..7, col=0..7)
 
-; GA_RFCT100 重み降順: 157,5,2,-4,-12,-15,-16,-19,-24,-49
+; GA_D2S 重み降順: 114,7,6,2,-5,-7,-12,-16,-54 (POS_ORDER_D2 と同値)
 POS_ORDER_D3:
-        ; weight=157: corner
+        ; weight=114: corner
         DEFB  0,  7, 56, 63
-        ; weight=5: edge_ctr (D1/A4 etc.)
-        DEFB  3,  4, 24, 31, 32, 39, 59, 60
-        ; weight=2: edge_near (C1/A3 etc.)
-        DEFB  2,  5, 16, 23, 40, 47, 58, 61
-        ; weight=-4: inner_edge (D2/B4 etc.)
+        ; weight=7: inner_edge (D2/E2/B4/G4 etc.)
         DEFB 11, 12, 25, 30, 33, 38, 51, 52
-        ; weight=-12: c_sq (B1/A2 etc.)
-        DEFB  1,  6,  8, 15, 48, 55, 57, 62
-        ; weight=-15: inner2 (D3/C4 etc.)
-        DEFB 19, 20, 26, 29, 34, 37, 43, 44
-        ; weight=-16: near_x (C2/B3 etc.)
-        DEFB 10, 13, 17, 22, 41, 46, 50, 53
-        ; weight=-19: inner (C3 etc.)
+        ; weight=6: inner (C3/F3/C6/F6)
         DEFB 18, 21, 42, 45
-        ; weight=-24: center (D4 etc.)
+        ; weight=2: inner2 (D3/E3/C4/F4 etc.)
+        DEFB 19, 20, 26, 29, 34, 37, 43, 44
+        ; weight=-5: c_sq (B1/G1/A2/H2 etc.)
+        DEFB  1,  6,  8, 15, 48, 55, 57, 62
+        ; weight=-7: edge_ctr (D1/E1/A4/H4 etc.)
+        DEFB  3,  4, 24, 31, 32, 39, 59, 60
+        ; weight=-12: center (D4/E4/D5/E5)
         DEFB 27, 28, 35, 36
-        ; weight=-49: x_sq (B2/G2 etc.)
+        ; weight=-16: near_x+edge_near (C2/F2/B3/G3 + C1/F1/A3/H3 etc.)
+        DEFB 10, 13, 17, 22, 41, 46, 50, 53
+        DEFB  2,  5, 16, 23, 40, 47, 58, 61
+        ; weight=-54: x_sq (B2/G2/B7/G7)
         DEFB  9, 14, 49, 54
 
 ; GA_D2S優勝 重み降順: 114,7,6,2,-5,-7,-12,-16,-54
@@ -1568,8 +1568,8 @@ NGS_D2:
 
 ; ---------------------------------------------------------
 ; EvalLeaf  [pos_diff + mob×mob_w + stable×stable_w - stone_diff×stone_w]
-;   フェーズ判定: EMPTY_CACHE >= 44 → EARLY (mob×8, stable×8,  -stone×8)
-;                 EMPTY_CACHE >= 18 → MID   (mob×8, stable×16, -stone×4)
+;   フェーズ判定: EMPTY_CACHE >= 44 → EARLY (mob×4, stable×4,  -stone×4)
+;                 EMPTY_CACHE >= 18 → MID   (mob×4, stable×8,  -stone×2)
 ;                 EMPTY_CACHE  < 18 → LATE  (EL_LATE: (stone_diff+stable_diff)×100)
 ;
 ; Input:  D = 評価対象 side (AI視点: 正=有利)
@@ -1580,9 +1580,8 @@ EvalLeaf:
         LD   A,D
         LD   (EV_SIDE),A    ; 評価対象 side を保存
 
-        ; LATE(empty<MID_GAME=18): stone_diff×100 + stable×30
-        ;   12→18に変更: depth-3 leaf(root-3)でMID式が破綻するのを防ぐ
-        ;   POS_WEIGHT負値+石数劣勢ボーナス化によりeval値が大幅に誤る問題の対処
+        ; LATE(empty<MID_GAME=18): (stone_diff+stable_diff)×100
+        ;   MID_GAME=18: depth-3 leaf(root-3)でMID式が破綻するのを防ぐ
         LD   A,(EMPTY_CACHE)
         CP   MID_GAME
         JP   C,EL_LATE
@@ -1655,10 +1654,9 @@ EL_NEXT:
         JR   Z,EL_MOBPOS
         LD   H,0FFH             ; 負値: 符号拡張
 EL_MOBPOS:
-        ; mob_w = 8 (EARLY/MID 共通)
+        ; mob_w = 4 (EARLY/MID 共通)
         ADD  HL,HL              ; ×2
         ADD  HL,HL              ; ×4
-        ADD  HL,HL              ; ×8
 EL_MOBDONE:
         ; EV_POS_DIFF += mob_term
         EX   DE,HL
@@ -1690,21 +1688,19 @@ EL_MOBDONE:
         JR   Z,EL_STBPOS
         LD   H,0FFH             ; 負値: 符号拡張
 EL_STBPOS:
-        ; フェーズ判定: stable_w (EARLY=×8, MID=×16)
+        ; フェーズ判定: stable_w (EARLY=×4, MID=×8)
         LD   A,(EMPTY_CACHE)
         CP   44
-        JR   NC,EL_STB8         ; >= 44 → EARLY: stable_w=8
-        ; MID: stable_w=16
+        JR   NC,EL_STB4         ; >= 44 → EARLY: stable_w=4
+        ; MID: stable_w=8
         ADD  HL,HL              ; ×2
         ADD  HL,HL              ; ×4
         ADD  HL,HL              ; ×8
-        ADD  HL,HL              ; ×16
         JR   EL_STBDONE
-EL_STB8:
-        ; stable_w=8
+EL_STB4:
+        ; stable_w=4
         ADD  HL,HL              ; ×2
         ADD  HL,HL              ; ×4
-        ADD  HL,HL              ; ×8
 EL_STBDONE:
         ; EV_POS_DIFF += stable_term
         EX   DE,HL
@@ -1712,7 +1708,7 @@ EL_STBDONE:
         ADD  HL,DE
         LD   (EV_POS_DIFF),HL
 
-        ; --- stone_diff ペナルティ (EARLY: -×8, MID: -×4) ---
+        ; --- stone_diff ペナルティ (EARLY: -×4, MID: -×2) ---
         CALL CountStones        ; B=黒数, C=白数 (AF,D,HL 破壊)
         LD   A,(EV_SIDE)
         CP   BLACK
@@ -1733,19 +1729,17 @@ EL_STN_DONE:
         JR   Z,EL_STN_POS
         LD   H,0FFH
 EL_STN_POS:
-        ; フェーズ別: EARLY(>=44): ×8, MID: ×4
+        ; フェーズ別: EARLY(>=44): ×4, MID: ×2
         LD   A,(EMPTY_CACHE)
         CP   44
-        JR   NC,EL_STN_8        ; >= 44 → EARLY: ×8
-        ; MID: ×4
+        JR   NC,EL_STN_4        ; >= 44 → EARLY: ×4
+        ; MID: ×2
         ADD  HL,HL              ; ×2
-        ADD  HL,HL              ; ×4
         JR   EL_STN_SUB
-EL_STN_8:
-        ; EARLY: ×8
+EL_STN_4:
+        ; EARLY: ×4
         ADD  HL,HL              ; ×2
         ADD  HL,HL              ; ×4
-        ADD  HL,HL              ; ×8
 EL_STN_SUB:
         ; EV_POS_DIFF -= stone_term → HL = final score
         EX   DE,HL
