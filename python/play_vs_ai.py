@@ -47,7 +47,7 @@ POS_WEIGHT_D3 = [
 ]
 
 D3_THRESHOLD = 20  # 空き < 20 → depth-3 に切替 (RFCT150.ASM D3_THRESHOLD=20 と同期)
-EG_THRESHOLD = 12  # 空き < 12 → 終盤完全読み（oth.EG_THRESHOLD と同値）
+EG_THRESHOLD = 5   # 空き < 5 (=空き<=4) → 終盤完全読み（RFCT150.ASM ENDGAME_THRESHOLD=4 と同期）
 
 MID_GAME = 18  # LATE/MID 境界 (RFCT120.ASM MID_GAME EQU 18 と同値)
 

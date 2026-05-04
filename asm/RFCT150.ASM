@@ -1,7 +1,7 @@
 ; =========================================================
 ; Super AKI-80 8x8 Othello  [RFCT150: 終盤完全読み有効化]
 ;                            [RFCT120 ベース]
-;                            [ENDGAME_THRESHOLD=2: 空き<=2 で完全読み]
+;                            [ENDGAME_THRESHOLD=4: 空き<=4 で完全読み]
 ; ---------------------------------------------------------
 ; Target : Z80 (Super AKI-80)
 ; Serial : SIOA  DAT=18h  CTL=19h  (SIO init by monitor)
@@ -110,7 +110,7 @@ BUF_MAX         EQU 64
 LINE_MAX        EQU 20
 
 ; [CONST] 閾値・ゲーム定数 --------------------------------
-ENDGAME_THRESHOLD  EQU 2    ; 終盤完全読み: 空き <= 2 で発動
+ENDGAME_THRESHOLD  EQU 4    ; 終盤完全読み: 空き <= 4 で発動
 
 ; フェーズ閾値 (CountEmpty の値で判定)
 EARLY_GAME  EQU 44          ; 空き >= 44: 序盤
@@ -2114,7 +2114,7 @@ NMR_NEXT:
         JP   NMR_LOOP
 
 NMR_END:
-        ; 合法手なし → EvalLeaf (PASS/terminal 簡易処理)
+        ; idx>=64: ループ終了
         LD   A,(NM_CALL_DEPTH)
         LD   HL,NM_HAS_MOVE
         LD   C,A
@@ -2122,15 +2122,56 @@ NMR_END:
         ADD  HL,BC
         LD   A,(HL)
         OR   A
-        JR   NZ,NMR_RETURN
+        JR   NZ,NMR_RETURN      ; has_move!=0 → 最善手あり → alpha を返す
 
+        ; has_move==0: 合法手なし → PASS or terminal
+        ; 現サイドを求めて相手サイドを D にセット
         LD   A,(NM_CALL_DEPTH)
         LD   HL,NM_SIDE_TBL
         LD   C,A
         LD   B,0
         ADD  HL,BC
-        LD   D,(HL)
-        CALL CountEmpty         ; A=実際の空きマス数 (BC,HL保持 D保持)
+        LD   A,(HL)             ; A = current side
+        LD   C,A
+        LD   A,3
+        SUB  C                  ; A = opponent
+        LD   D,A
+
+        ; 相手に合法手があるか確認
+        CALL HasAnyLegalMove    ; D=player → A=1:あり/0:なし (AF,BC,DE,HL,IX,IY 破壊)
+        OR   A
+        JR   Z,NMR_PASS_TERMINAL  ; 相手も合法手なし → ゲーム終了
+
+        ; PASS: 深さを消費せずに相手番で NegaMax を再帰
+        ; HasAnyLegalMove が D を破壊するため NM_SIDE_TBL から再ロード
+        LD   A,(NM_CALL_DEPTH)
+        LD   HL,NM_SIDE_TBL
+        LD   C,A
+        LD   B,0
+        ADD  HL,BC
+        LD   A,(HL)
+        LD   C,A
+        LD   A,3
+        SUB  C
+        LD   D,A                ; D = opponent (再ロード)
+        CALL NegaMax            ; HL = 相手視点スコア
+
+        ; 自分視点に符号反転して返す
+        EX   DE,HL
+        LD   HL,0
+        AND  A
+        SBC  HL,DE
+        RET
+
+NMR_PASS_TERMINAL:
+        ; 両者合法手なし → ゲーム終了: EvalLeaf (LATE式: (stone+stable)×100)
+        LD   A,(NM_CALL_DEPTH)
+        LD   HL,NM_SIDE_TBL
+        LD   C,A
+        LD   B,0
+        ADD  HL,BC
+        LD   D,(HL)             ; D = current side
+        CALL CountEmpty
         LD   (EMPTY_CACHE),A
         CALL EvalLeaf
         RET

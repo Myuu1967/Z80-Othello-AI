@@ -928,3 +928,39 @@ depth-2 適用中に B1 などの不利な手を選ぶ挙動を確認。B1 が�
 ### 大会スケジュール
 
 大会まであと5日（2026-05-09 頃）。次ステップ: 実機アセンブル・確認 → ENDGAME_THRESHOLD 引き上げ検討。
+
+---
+
+## RFCT150 PASS処理修正 + ENDGAME_THRESHOLD=4 (2026-05-04)
+
+### Python vs Z80 の差異精査結果
+
+Python（play_vs_ai.py）の方が強く感じる原因を特定:
+
+| 差異 | Python | Z80（修正前） | 影響 |
+|---|---|---|---|
+| ENDGAME_THRESHOLD | 空き<12 で完全読み | 空き≤2 のみ | 終盤10手分の完全読みが欠如 |
+| PASS処理 | depth消費せず相手番を再帰 | EvalLeafで即打ち切り | PASS局面で1ply以上読みが浅い |
+
+### 修正内容
+
+**ENDGAME_THRESHOLD: 2 → 4**
+- `RFCT150.ASM`: `ENDGAME_THRESHOLD EQU 4`
+- `play_vs_ai.py`: `EG_THRESHOLD = 5`（空き<5 = 空き≤4 で揃える）
+
+**NMR_END PASS処理修正**
+
+修正前: 合法手なし → EvalLeaf を即呼び出し
+
+修正後:
+```
+合法手なし → 相手に合法手があるか HasAnyLegalMove でチェック
+  相手に手あり → depth消費せず相手番で NegaMax 再帰 → 符号反転して返す  (PASS)
+  相手も手なし → EvalLeaf でゲーム終了評価  (terminal)
+```
+
+これにより depth-2/3 ともに PASS を含む局面で Python と同等の探索深さになる。
+
+### 実機確認待ち
+
+アセンブル・動作確認後に ENDGAME_THRESHOLD をさらに引き上げるかを判断。
