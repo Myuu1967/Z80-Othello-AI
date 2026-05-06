@@ -964,3 +964,182 @@ Python（play_vs_ai.py）の方が強く感じる原因を特定:
 ### 実機確認待ち
 
 アセンブル・動作確認後に ENDGAME_THRESHOLD をさらに引き上げるかを判断。
+
+---
+
+## RFCT150 フリーズ調査・実機テスト2回 (2026-05-06)
+
+### フリーズ発生経緯
+
+前回セッション末に RFCT150.ASM（ENDGAME_THRESHOLD=4）をアセンブル・実機対局したところ、
+完全読み（AIset_EG）が発動した瞬間にフリーズが発生した。
+
+### コード精査結果（フリーズ原因調査）
+
+| 調査箇所 | 結論 |
+|---|---|
+| `SaveBoard` / `RestoreBoard` | PUSH AF,BC,DE,HL + LDIR + POP 全対称 → 完全安全 |
+| `HasAnyLegalMove` | 全64マス B/C ループ + `IsLegalMove` 呼び出し → 正しい |
+| `EG_GetSaveAddr` | depth=0→BOARD_SAVE1、1→BOARD_SAVE2、≥2→BOARD_EG_SAVES | 前回修正済で問題なし |
+| `SF_ALPHA_TBL` 初期化 | SearchFull 入口で毎回 `81H` を設定 → 問題なし |
+| スタックバランス | PUSH/POP 対称確認、α-β cutoff 時の `LD SP,HL` 使用なし → 問題なし |
+| `SF_SIDE_TMP` 復元 | `3 - opp` 計算 → `PUSH AF` 保存方式に変更（下記参照） |
+
+**定義的なバグは発見されなかった。**
+
+### SF_SIDE_TMP 復元方式の改善（未コミット）
+
+SF_Pass および SF_OLOOP で `SF_SIDE_TMP` を復元する際、旧来は `3 - 相手番` で計算していたが、
+これを `PUSH AF` / `POP AF` による保存・復元方式に変更した。
+
+```asm
+; SF_Pass 変更後
+    LD   A,(SF_SIDE_TMP)    ; orig_side 保存
+    PUSH AF
+    ; ... SearchFull 再帰 ...
+    POP  AF
+    LD   (SF_SIDE_TMP),A    ; orig_side 復元
+
+; SF_OLOOP 変更後（EG_BESTSCORE も同時保存）
+    LD   E,A                ; orig_side を E に保存
+    PUSH DE                 ; orig_side + EG_BESTSCORE 保存
+    ; ... SearchFull 再帰 ...
+    POP  DE                 ; 復元
+    LD   A,E
+    LD   (SF_SIDE_TMP),A
+```
+
+計算式が不要になり、確実性が向上。アセンブル OK（エラーなし）。
+
+### 実機テスト2回
+
+| テスト | 結果 | 完全読み発動 |
+|---|---|---|
+| 1回目 | X:00 O:32（連続パス終了） | 発動せず（石数差でゲーム終了） |
+| 2回目 | X:31 O:33（白勝ち） | **空き=2 で AIset_EG 発動 → 正常終了確認** |
+
+2回目でフリーズ再現せず。AIset_EG が正常に動作することを確認。
+
+### 現状まとめ
+
+- フリーズは再現せず（初回のみ）
+- どのアセンブルバージョンをテストしたか不明（コミット版 or PUSH AF 修正版）
+- 未コミット変更（PUSH AF 方式）はコミット推奨
+
+---
+
+## ROM化計画 (2026-05-06 着手)
+
+### 方針
+
+RFCT150.ASM → RFCT150_ROM.ASM として ROM 起動対応版を作成。
+
+### 構造変更
+
+| セクション | ORG | 内容 |
+|---|---|---|
+| ROM | 0000H | リセットベクタ (JP START)、InitCTC3、InitSIOA、コード、文字列、テーブル、BOARD_INIT |
+| RAM | 8000H | BOARD (64B)、BOARD_SAVE*, BOARD_EG_SAVES、変数 (DEFS) |
+
+### 追加コード（MM2_AB_ROM.ASM から流用）
+
+```asm
+        ORG  0000H
+        JP   START
+
+InitCTC3:
+        LD   A,17H
+        OUT  (13H),A        ; CTC3 コントロールワード
+        LD   A,04H
+        OUT  (13H),A        ; CTC3 時定数 → 9600bps クロック供給
+        RET
+
+InitSIOA:
+        LD   HL,SIOA_INIT_TBL
+        LD   B,9
+        LD   C,19H          ; SIOA_CTL
+        OTIR
+        RET
+
+SIOA_INIT_TBL:
+        DEFB 18H,04H,44H,03H,0C1H,05H,6AH,01H,00H
+```
+
+### START の変更点
+
+```asm
+START:
+        LD   SP,0FFF0H
+        CALL InitCTC3       ; ← 追加
+        CALL InitSIOA       ; ← 追加（DI 削除 or そのまま）
+        CALL InitBoard      ; ← 追加（BOARD を RAM に BOARD_INIT でコピー）
+        CALL InitPIOB
+        ...
+```
+
+### 注意点
+
+- `BOARD:` を `DEFB` → `DEFS 64` に変更（RAM セクションへ移動）
+- `BOARD_INIT:` は ROM に残す
+- `RST 00H` は ROM では JP START（リセット）として動作するため問題なし
+- 27C256（32KB EPROM）に書き込むのは 0000H-7FFFH 範囲のみ
+
+---
+
+## ROM 動作確認テスト (2026-05-06)
+
+### PIOA_TEST.ASM — 実機確認 ✓
+
+27C256 EPROM に書き込み、モニタ ROM と差し替えて電源 ON。
+
+`PIOA D7` を約 0.35秒ごとに HIGH/LOW トグル。Pico GPIO15 で受信確認。
+
+**→ EPROM からのコード実行が正常に動作することを確認。**
+
+SIOA を一切使わないテストのため「シリアルが死んでいてもコードは動く」ことの証明。
+
+### SIOA_TEST.ASM — 実機確認 ✓
+
+27C256 EPROM から起動し、SIOA 初期化 + 9600bps シリアル出力を確認。
+
+起動後 約1秒ごとに `CR LF "SIOA OK" CR LF` を繰り返し送信 → TeraTerm で受信確認。
+
+**→ ROM 起動からの InitSIOA + InitCTC3 シーケンスが正常動作することを確認。**
+
+#### 初期化順序（重要）
+
+```asm
+CALL InitSIOA   ; 先に SIOA 初期化 (WR4/WR3/WR5/WR1 設定)
+CALL InitCTC3   ; 後でボーレートクロック (CTC3) 起動
+```
+
+**InitSIOA → InitCTC3 の順が正しい。** 逆にすると SIOA がクロックを受け取る前に設定しようとしてハングする可能性がある。
+
+#### PIOA/PIOB/PPI0/PPI1 初期化も必要
+
+モニタ ROM が通常実行している初期化を ROM 版でも手動で実施:
+
+```asm
+LD   A,0CFH
+OUT  (1DH),A        ; PIOA CMD: Mode3
+LD   A,01H
+OUT  (1DH),A        ; PIOA 方向: bit0=入力, 他=出力
+LD   A,0CFH
+OUT  (1FH),A        ; PIOB CMD: Mode3
+LD   A,00H
+OUT  (1FH),A        ; PIOB 方向: 全出力
+LD   A,80H
+OUT  (33H),A        ; PPI0: Mode0, 全出力
+OUT  (37H),A        ; PPI1: Mode0, 全出力
+```
+
+### ROM化 実機確認まとめ
+
+| 確認項目 | 結果 |
+|---|---|
+| EPROM (27C256) 0000H 起動 | ✓ |
+| PIOA D7 出力 (PIOA_TEST) | ✓ |
+| InitSIOA + InitCTC3 (9600bps) | ✓ |
+| TeraTerm シリアル受信 | ✓ |
+
+**次ステップ: RFCT150.ASM を ROM 化（RFCT150_ROM.ASM 作成）**

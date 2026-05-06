@@ -2292,23 +2292,22 @@ SF_CurrIsBlack:
 
 SF_Pass:
         ; PASS: 相手番で再帰し、スコアの符号を反転して返す
+        ; SF_SIDE_TMP を PUSH で保存し、再帰後に正確に復元する
+        LD   A,(SF_SIDE_TMP)    ; 自分番を保存
+        PUSH AF                 ; [orig_side]
         LD   A,(EG_DEPTH)
         INC  A
         LD   (EG_DEPTH),A
         LD   A,D
         LD   (SF_SIDE_TMP),A    ; 相手番をセット
         CALL SearchFull         ; A = 相手視点スコア
-        PUSH AF
-        ; 深さ・side を復元
+        LD   E,A                ; スコアを退避
         LD   A,(EG_DEPTH)
         DEC  A
         LD   (EG_DEPTH),A
-        LD   A,(SF_SIDE_TMP)    ; 現在は相手番
-        LD   E,A
-        LD   A,3
-        SUB  E
-        LD   (SF_SIDE_TMP),A    ; 自分番に戻す
-        POP  AF
+        POP  AF                 ; A = 自分番 (保存した値)
+        LD   (SF_SIDE_TMP),A    ; 自分番に正確に復元
+        LD   A,E
         NEG                     ; 自分視点に反転
         RET
 
@@ -2372,35 +2371,34 @@ SF_OLOOP:
         LD   D,A
         CALL ApplyMove
 
-        ; depth++, side 切替
+        ; depth++, side 切替 (SF_SIDE_TMP を PUSH で保存し再帰後に正確に復元)
         LD   A,(EG_DEPTH)
         INC  A
         LD   (EG_DEPTH),A
-        LD   A,(SF_SIDE_TMP)
+        LD   A,(SF_SIDE_TMP)    ; A = 自分番
         LD   E,A
         LD   A,3
         SUB  E
         LD   D,A
-        LD   (SF_SIDE_TMP),A
+        LD   (SF_SIDE_TMP),A    ; 相手番に切替
 
-        ; EG_BESTSCORE 退避 (再帰で上書きされるため)
+        ; EG_BESTSCORE・自分番を退避 (再帰で上書きされるため)
         LD   A,(EG_BESTSCORE)
-        PUSH AF
+        PUSH AF                 ; [EG_BESTSCORE, index]
+        LD   A,E                ; A = 自分番 (orig_side)
+        PUSH AF                 ; [orig_side, EG_BESTSCORE, index]
         CALL SearchFull         ; A = 相手視点スコア
         NEG                     ; 自分視点に反転
         LD   E,A                ; E = child_score
-        POP  AF
+        POP  AF                 ; A = 自分番 (orig_side)
+        LD   (SF_SIDE_TMP),A    ; SF_SIDE_TMP を正確に復元
+        POP  AF                 ; A = EG_BESTSCORE
         LD   (EG_BESTSCORE),A   ; EG_BESTSCORE 復元
 
-        ; depth--, side 復元
+        ; depth-- (side は上で復元済み)
         LD   A,(EG_DEPTH)
         DEC  A
         LD   (EG_DEPTH),A
-        LD   A,(SF_SIDE_TMP)
-        LD   B,A
-        LD   A,3
-        SUB  B
-        LD   (SF_SIDE_TMP),A
 
         ; RestoreBoard
         LD   A,(EG_DEPTH)
