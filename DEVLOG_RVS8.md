@@ -1143,3 +1143,50 @@ OUT  (37H),A        ; PPI1: Mode0, 全出力
 | TeraTerm シリアル受信 | ✓ |
 
 **次ステップ: RFCT150.ASM を ROM 化（RFCT150_ROM.ASM 作成）**
+
+---
+
+## RF150ROM.ASM 作成 (2026-05-07)
+
+### 概要
+
+RFCT150.ASM をコピーして `RF150ROM.ASM` を作成し、ROM（27C256）起動対応版に変換。
+アセンブルOK・HEXファイル確認済み。
+
+### Step 1: ORG 変更 + 初期化コード追加
+
+| 変更 | 内容 |
+|---|---|
+| `ORG 8000H` → `ORG 0000H` | リセットベクタを 0000H に |
+| START 冒頭に追加 | PIOA 初期化（Mode3, D0=入力/他=出力）|
+| START 冒頭に追加 | PPI0/PPI1 初期化（Mode0, 全出力）|
+| START 冒頭に追加 | `CALL InitSIOA` → `CALL InitCTC3` の順で呼び出し |
+| 関数追加 | `InitCTC3` / `InitSIOA` / `SIOA_INIT_TBL`（SIOA_TEST.ASM から流用、InitPIOB の直前に配置）|
+
+アセンブルOK。
+
+### Step 2: 変数を RAM セクション（ORG 8000H）に分離
+
+| 変更 | 内容 |
+|---|---|
+| ROM 側の `BOARD: DEFB` を削除 | RAM 側 `BOARD: DEFS BOARD_BYTES` に移動 |
+| `BOARD_INIT: DEFB` は ROM 側に残す | InitBoard が LDIR でコピーするテンプレート |
+| `BOARD_SAVE1/2/3`, `BOARD_EG_SAVES` を RAM へ | 元々 DEFS のためそのまま移動 |
+| 全変数 (`AiSide` 等 `DEFB 0`) → `DEFS 1` | `END START` 直前に `ORG 8000H` セクションとして追加 |
+
+アセンブルOK。
+
+### HEX ファイル確認
+
+```
+先頭: :20000000C317...  → 0000H 開始 ✓
+末尾データ: :0A11600083...  → 約 116AH で終了（ROM領域内）✓
+8000H 以降のレコード: なし ✓（DEFS は HEX 出力されない）
+```
+
+27C256（32KB）の 0000H-7FFFH 範囲に書き込み可能な状態。
+
+### 次ステップ
+
+1. 27C256 EPROM に書き込み・実機動作確認
+2. 問題なければ大会出場バージョン確定
