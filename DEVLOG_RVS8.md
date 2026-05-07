@@ -1190,3 +1190,83 @@ RFCT150.ASM をコピーして `RF150ROM.ASM` を作成し、ROM（27C256）起�
 
 1. 27C256 EPROM に書き込み・実機動作確認
 2. 問題なければ大会出場バージョン確定
+
+---
+
+## RF150ROM.ASM 実機確認・バグ修正・大会版確定 (2026-05-07)
+
+### 初回 EPROM 実機確認結果
+
+| 項目 | 結果 |
+|---|---|
+| PC との接続・通信 | おおむね正常 |
+| depth-3 通常探索 | 正常動作 |
+| 終盤完全読み（AIset_EG）| 正常動作 |
+| AI 打ち手表示 | **常に「A1」固定（バグ）** |
+| Pico 初期表示 | **初手前が不正（バグ）** |
+
+### バグ1: AI 打ち手が常に「A1」
+
+**原因**: `AImovePOS: DEFB 'A','1',0` が ROM 領域（ORG 0000H）に定義されていたため、
+`LD (AImovePOS),A` による書き込みが無効で「A1」のまま固定されていた。
+ROM 化（BOARD を RAM に移動）の際に同様の変換が必要だったが見落とし。
+
+**修正**: `LD (AImovePOS),A` + `PrintString` を廃止し、`PutChar` で直接出力に変更（AIset・AIset_EG の2箇所）。`AImovePOS: DEFB` 定義を削除。
+
+```asm
+; 修正前（ROM書き込みが無効）
+LD   (AImovePOS),A
+...
+LD   DE,AImovePOS
+CALL PrintString
+
+; 修正後（PutChar で直接出力）
+LD   DE,AImoveMSG
+CALL PrintString
+LD   A,(NM_ROOT_POS)
+AND  07H
+ADD  A,'A'
+CALL PutChar            ; col letter
+LD   A,(NM_ROOT_POS)
+RRCA / RRCA / RRCA
+AND  07H
+ADD  A,'1'
+CALL PutChar            ; row digit
+```
+
+### バグ2: Pico 初期表示が不正（1手目以降は正常）
+
+**原因が2つ重なっていた:**
+
+1. `START` 内で `InitBoard` を呼んでいない  
+   → `BOARD`（RAM 8000H）が電源投入時の不定値のまま `PrintBoard` に渡る
+
+2. `PrintBoard` が `DecideFirstTurn` より前に実行されていた  
+   → Pico の MicroPython 起動（2〜3秒）が完了する前に盤面データが SIOA 送信される
+
+**修正**: START の呼び出し順を変更。
+
+```asm
+; 修正前
+CALL PrintBoard
+CALL DecideFirstTurn
+
+; 修正後
+CALL InitBoard          ; RAM の BOARD を BOARD_INIT から初期化
+CALL DecideFirstTurn    ; "Choose:" 送信 → SW待ち（この間に Pico が起動）
+CALL PrintBoard         ; Pico 起動完了後に正しい初期盤面を送信
+```
+
+`DecideFirstTurn` の SW 入力待ち（ユーザーが先後手を選ぶ数秒間）を活用し、
+追加の待機ループなしで Pico 起動タイミングを自然に吸収。
+
+### 再アセンブル → EPROM 再書き込み → 実機確認結果
+
+| 項目 | 結果 |
+|---|---|
+| AI 打ち手表示 | **正常（A1 以外の座標が正しく表示）** ✓ |
+| Pico 初期盤面表示 | **正常（AKI-80 単独電源でも初手から表示）** ✓ |
+| 処理時間計測（Pico GPIO15）| 正常 ✓ |
+| depth-3・終盤完全読み | 正常 ✓ |
+
+**→ RF150ROM.ASM を大会出場バージョンとして確定。**
