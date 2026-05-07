@@ -162,7 +162,6 @@ MSG_WIN_O:      DEFM "WHITE(O) wins",0
 MSG_DRAW:       DEFM "Draw",0
 
 AImoveMSG:      DEFM "AI moves to ",0
-AImovePOS:      DEFB 'A','1',0
 MSG_EVAL:       DEFM "Eval:",0
 
 MSG_RETRYQ:     DEFM CR,LF,"r:Retry or q:Quit ? ",0
@@ -320,8 +319,9 @@ START:
 
         CALL InitPIOB           ; PIOB: SW0-SW4 入力モード
 
-        CALL PrintBoard
+        CALL InitBoard
         CALL DecideFirstTurn
+        CALL PrintBoard
 
 MAIN_LOOP:
         ; PB5 中断チェック (ターン間)
@@ -1451,21 +1451,19 @@ AS_END:
         CALL ApplyMove
 
         ; "AI moves to XY\r\n" 出力
+        LD   DE,AImoveMSG
+        CALL PrintString
         LD   A,(NM_ROOT_POS)
         AND  07H
         ADD  A,'A'
-        LD   (AImovePOS),A
+        CALL PutChar            ; col letter
         LD   A,(NM_ROOT_POS)
         RRCA
         RRCA
         RRCA
         AND  07H
         ADD  A,'1'
-        LD   (AImovePOS+1),A
-        LD   DE,AImoveMSG
-        CALL PrintString
-        LD   DE,AImovePOS
-        CALL PrintString
+        CALL PutChar            ; row digit
         CALL NEWLINE
 
         ; "Eval:YYYY\r\n" 出力
@@ -2501,16 +2499,14 @@ AEGM_NEXTCOL:
         CALL ApplyMove
 
         ; "AI moves to XX" 表示
-        LD   A,(EG_BESTCOL)
-        ADD  A,'A'
-        LD   (AImovePOS),A
-        LD   A,(EG_BESTROW)
-        ADD  A,'1'
-        LD   (AImovePOS+1),A
         LD   DE,AImoveMSG
         CALL PrintString
-        LD   DE,AImovePOS
-        CALL PrintString
+        LD   A,(EG_BESTCOL)
+        ADD  A,'A'
+        CALL PutChar            ; col letter
+        LD   A,(EG_BESTROW)
+        ADD  A,'1'
+        CALL PutChar            ; row digit
         CALL NEWLINE
         RET
 
