@@ -1,0 +1,477 @@
+# Z80オセロAI 終盤完全読み実装タスク
+# 新ファイル: MM2_AB_EG.ASM
+
+## 目的
+`F:\ClaudeCode\Z80-Othello\asm\RVS8_MM2_AB.ASM` をベースに
+終盤完全読み機能を追加した新ファイル
+`F:\ClaudeCode\Z80-Othello\asm\MM2_AB_EG.ASM` を作成する。
+
+---
+
+## ハードウェア仕様
+
+- CPU: Z80 (Super AKI-80) 10MHz / ORG 8000H (RAM配置)
+- SIOA: DAT=18H, CTL=19H
+- PIOA: DATA=1CH, CMD=1DH (D7=処理時間計測トリガ)
+- PIOB: DATA=1EH, CMD=1FH (SW0-SW4 スイッチ入力)
+- CTC: 利用不可
+
+---
+
+## 既存コードの絶対ルール（違反するとバグになる）
+
+- `ApplyMove` は B,C を破壊 → PUSH BC は必ず ApplyMove より前
+- `CountMobility` は A を破壊 → 前後に PUSH AF / POP AF 必須
+- `CountAllFlips` は AF,BC,DE,HL,IX,IY を破壊
+  → 呼び出し元で PUSH BC / PUSH DE 必須
+- `SaveBoard(HL=保存先)` / `RestoreBoard(HL=復元元)` → HL パラメータ渡し
+  → 内部で全レジスタを PUSH/POP 保護しているので呼び出し元は気にしなくてよい
+- `HasAnyLegalMove(D=side)` は AF,BC,DE,HL,IX,IY を破壊
+
+---
+
+## 既存ルーティン一覧（流用するもの）
+
+| ルーティン        | 入力              | 出力             | 備考              |
+|-------------------|-------------------|------------------|-------------------|
+| CountAllFlips     | D=side,B=row,C=col| A=flips数        | 0=非合法          |
+| ApplyMove         | D=side,B=row,C=col| A=1成功/0失敗    | B,C破壊           |
+| SaveBoard         | HL=保存先         | -                | 全レジスタ保護    |
+| RestoreBoard      | HL=復元元         | -                | 全レジスタ保護    |
+| HasAnyLegalMove   | D=side            | A=1あり/0なし    |                   |
+| CountStones       | -                 | B=黒数,C=白数    |                   |
+| PutChar/PrintString/NEWLINE | -     | -                | シリアル出力      |
+| PrintDec2         | A=値(0-99)        | -                | 2桁10進出力       |
+| AiSide / HumSide  | (変数)            | -                | BLACK=1,WHITE=2   |
+
+---
+
+## 実装内容（7ステップ）
+
+---
+
+### Step 1: ファイル作成・土台準備
+
+RVS8_MM2_AB.ASM の内容をそのままコピーして MM2_AB_EG.ASM を作成し、
+以下の変更のみ行う。この時点でアセンブル・動作は RVS8_MM2_AB と同等のはず。
+
+ヘッダコメント変更:
+  [Minimax depth-2 + Alpha-Beta + EndGame perfect read]
+  Apr 15th, 2026 EndGame完全読み追加 -> MM2_AB_EG.ASM
+
+定数追加（Game constants セクション末尾に追加）:
+  ENDGAME_THRESHOLD  EQU 8    ; 空きマス <= 8 で完全読みに切り替え
+                               ; 実機計測後に 10 への拡張を検討
+
+変数追加（Variables セクションの末尾、OBS2_MIN_AI の後に追加）:
+  ; ---- EndGame 完全読み用 ----
+  EG_DEPTH:     DEFB 0    ; SearchFull 再帰深さ (0-based)
+  EG_BESTSCORE: DEFB 0    ; AIset_EG ベストスコア (符号付き -64～+64)
+  EG_BESTROW:   DEFB 0
+  EG_BESTCOL:   DEFB 0
+  EG_ALPHA:     DEFB 0    ; SearchFull α値 (Step6で使用、今は未使用)
+  SF_SIDE_TMP:  DEFB 0    ; SearchFull 内 side 一時保存
+
+BOARD_SAVE スロット追加（BOARD_SAVE2 の直後に追加）:
+  ; 完全読み用セーブスロット (EG_DEPTH 2～9 に対応, 各64バイト = 合計512バイト)
+  BOARD_EG_SAVES:
+          DEFS BOARD_BYTES * 8
+
+---
+
+### Step 2: CountEmpty と EG_GetSaveAddr 追加
+
+CountMobility ルーティンの直前に2つの関数を追加する。
+
+; ---------------------------------------------------------
+; CountEmpty
+;   BOARD の空きマス(EMPTY=0)数を返す
+; Output: A = empty count (0..64)
+; Destroys: AF, BC, HL
+; ---------------------------------------------------------
+CountEmpty:
+        PUSH BC
+        PUSH HL
+        LD   HL,BOARD
+        LD   B,BOARD_BYTES
+        LD   C,0            ; カウンタ
+CE_Loop:
+        LD   A,(HL)
+        OR   A
+        JR   NZ,CE_Next     ; EMPTY(0) 以外はスキップ
+        INC  C
+CE_Next:
+        INC  HL
+        DJNZ CE_Loop
+        LD   A,C
+        POP  HL
+        POP  BC
+        RET
+
+; ---------------------------------------------------------
+; EG_GetSaveAddr
+;   EG_DEPTH の値に対応する BOARD_SAVE バッファアドレスを返す
+;   depth 0 -> BOARD_SAVE1
+;   depth 1 -> BOARD_SAVE2
+;   depth N(>=2) -> BOARD_EG_SAVES + (N-2)*64
+; Input:  A = EG_DEPTH
+; Output: HL = バッファアドレス
+; Destroys: AF, BC, HL
+; ---------------------------------------------------------
+EG_GetSaveAddr:
+        OR   A
+        JR   NZ,EGA_D1
+        LD   HL,BOARD_SAVE1
+        RET
+EGA_D1:
+        CP   1
+        JR   NZ,EGA_D2
+        LD   HL,BOARD_SAVE2
+        RET
+EGA_D2:
+        ; depth >= 2: BOARD_EG_SAVES + (A-2)*64
+        SUB  2
+        LD   C,A
+        LD   B,0
+        SLA  C
+        SLA  C
+        SLA  C
+        SLA  C
+        SLA  C
+        SLA  C              ; C = (A-2) * 64
+        LD   HL,BOARD_EG_SAVES
+        ADD  HL,BC
+        RET
+
+動作確認用（Step2完了後に一時追加してテスト、確認後削除）:
+DT_DoAI の先頭に以下を一時挿入して実機で空き数を表示確認する。
+        CALL CountEmpty
+        CALL PrintDec2
+        CALL NEWLINE
+
+---
+
+### Step 3: SearchFull 実装（α-β なし）
+
+AIset ルーティンの直前に追加する。
+
+; ---------------------------------------------------------
+; SearchFull
+;   終盤完全読み 再帰探索 (negamax)
+;   α-β は Step6 で追加する
+;
+; Input:
+;   D = side to move (BLACK=1 or WHITE=2)
+;   (EG_DEPTH)    = 現在の再帰深さ (0-based)
+;   (SF_SIDE_TMP) = 現在の手番 side (D と同値、再帰内で保持用)
+; Output:
+;   A = score (手番プレイヤー視点の石差, 符号付き -64～+64)
+;       正=手番プレイヤー有利, 負=不利
+; Destroys: AF, BC, DE, HL
+; ---------------------------------------------------------
+SearchFull:
+        ; [1] 合法手チェック
+        PUSH DE
+        CALL HasAnyLegalMove    ; D=side, A=1:あり/0:なし
+        POP  DE
+        OR   A
+        JR   NZ,SF_HasMove
+
+        ; --- 合法手なし: 相手番を確認 ---
+        LD   A,3
+        SUB  D
+        LD   D,A                ; D = 相手番
+        PUSH DE
+        CALL HasAnyLegalMove
+        POP  DE
+        OR   A
+        JR   NZ,SF_Pass         ; 相手には合法手あり → PASS して再帰
+
+        ; --- ゲーム終了 (双方合法手なし) ---
+        CALL CountStones        ; B=黒数, C=白数
+        LD   A,(AiSide)
+        CP   BLACK
+        JR   Z,SF_AiIsBlack
+SF_AiIsWhite:
+        LD   A,C
+        SUB  B                  ; score = 白 - 黒 (AI=WHITE視点)
+        RET
+SF_AiIsBlack:
+        LD   A,B
+        SUB  C                  ; score = 黒 - 白 (AI=BLACK視点)
+        RET
+
+SF_Pass:
+        ; PASS: 相手番で再帰し符号反転
+        LD   A,(EG_DEPTH)
+        INC  A
+        LD   (EG_DEPTH),A
+        LD   A,D
+        LD   (SF_SIDE_TMP),A    ; 相手番をセット
+        CALL SearchFull         ; A = 相手視点スコア
+        PUSH AF
+        LD   A,(EG_DEPTH)
+        DEC  A
+        LD   (EG_DEPTH),A
+        ; 元の side を復元
+        LD   A,(SF_SIDE_TMP)
+        LD   E,A
+        LD   A,3
+        SUB  E
+        LD   (SF_SIDE_TMP),A
+        POP  AF
+        NEG                     ; 自分視点に反転
+        RET
+
+SF_HasMove:
+        ; [2] 全64マス走査 → 合法手を探索
+        LD   A,80H
+        LD   (EG_BESTSCORE),A   ; ベスト = -128
+
+        LD   B,0                ; row=0
+SF_ROW:
+        LD   C,0                ; col=0
+SF_COL:
+        LD   A,(SF_SIDE_TMP)
+        LD   D,A
+
+        PUSH BC
+        PUSH DE
+        CALL CountAllFlips      ; A = flips
+        POP  DE
+        POP  BC
+        OR   A
+        JR   Z,SF_NEXTCOL
+
+        ; 合法手: 仮着手 → 再帰 → 復元
+        PUSH BC                 ; row,col 保護
+        LD   A,(EG_DEPTH)
+        CALL EG_GetSaveAddr
+        CALL SaveBoard
+
+        LD   A,(SF_SIDE_TMP)
+        LD   D,A
+        CALL ApplyMove          ; B,C 破壊
+
+        ; 深さ更新・相手番にして再帰
+        LD   A,(EG_DEPTH)
+        INC  A
+        LD   (EG_DEPTH),A
+        LD   A,(SF_SIDE_TMP)
+        LD   E,A
+        LD   A,3
+        SUB  E
+        LD   D,A
+        LD   (SF_SIDE_TMP),A    ; 相手番をセット
+        CALL SearchFull         ; A = 相手視点スコア
+        NEG                     ; 自分視点に反転
+        LD   E,A                ; E = child_score
+
+        ; 深さ・side を復元
+        LD   A,(EG_DEPTH)
+        DEC  A
+        LD   (EG_DEPTH),A
+        LD   A,(SF_SIDE_TMP)    ; 現在は相手番
+        LD   IXL,A              ; 一時退避
+        LD   A,3
+        SUB  IXL
+        LD   (SF_SIDE_TMP),A    ; 自分番に戻す
+
+        LD   A,(EG_DEPTH)
+        CALL EG_GetSaveAddr
+        CALL RestoreBoard
+
+        POP  BC                 ; row,col 復元
+
+        ; ベスト更新 (符号付き比較: new - best)
+        LD   A,E
+        LD   D,A
+        LD   A,(EG_BESTSCORE)
+        LD   E,A
+        LD   A,D                ; A = new_score
+        SUB  E                  ; A = new - best
+        JP   M,SF_NEXTCOL       ; new < best → スキップ
+        JR   Z,SF_NEXTCOL       ; 同点 → スキップ
+        LD   A,D
+        LD   (EG_BESTSCORE),A
+
+SF_NEXTCOL:
+        INC  C
+        LD   A,C
+        CP   8
+        JR   C,SF_COL
+
+        INC  B
+        LD   A,B
+        CP   8
+        JP   C,SF_ROW           ; 内側が深いため JP 使用
+
+        LD   A,(EG_BESTSCORE)
+        RET
+
+---
+
+### Step 4: AIset_EG 実装
+
+AIset ルーティンの直後に追加する。
+
+; ---------------------------------------------------------
+; AIset_EG
+;   終盤完全読みの最善手選択 (外ループ)
+;   AIset と同じ走査構造、スコア計算を SearchFull に差し替え
+; Destroys: AF, BC, DE, HL
+; ---------------------------------------------------------
+AIset_EG:
+        LD   A,80H
+        LD   (EG_BESTSCORE),A   ; -128 = 最小値
+        LD   A,0FFH
+        LD   (EG_BESTROW),A     ; FFH = 未発見
+
+        LD   B,0                ; row=0
+AEGM_ROW:
+        LD   C,0                ; col=0
+AEGM_COL:
+        LD   A,(AiSide)
+        LD   D,A
+
+        PUSH BC
+        PUSH DE
+        CALL CountAllFlips
+        POP  DE
+        POP  BC
+        OR   A
+        JR   Z,AEGM_NEXTCOL
+
+        PUSH BC                 ; row,col 保護
+        LD   HL,BOARD_SAVE1
+        CALL SaveBoard
+        LD   A,(AiSide)
+        LD   D,A
+        CALL ApplyMove          ; B,C 破壊
+
+        ; SearchFull 初期設定
+        XOR  A
+        LD   (EG_DEPTH),A
+        LD   A,(HumSide)
+        LD   D,A
+        LD   (SF_SIDE_TMP),A
+        CALL SearchFull         ; A = 相手視点スコア
+        NEG                     ; AI視点に反転
+        LD   E,A                ; E = ai_score
+
+        LD   HL,BOARD_SAVE1
+        CALL RestoreBoard
+        POP  BC                 ; row,col 復元
+
+        ; ベスト更新 (符号付き比較)
+        LD   A,E
+        LD   D,A
+        LD   A,(EG_BESTSCORE)
+        LD   IXL,A
+        LD   A,D
+        SUB  IXL                ; new - best
+        JP   M,AEGM_NEXTCOL     ; new < best → スキップ
+        JR   Z,AEGM_NEXTCOL     ; 同点 → スキップ
+        LD   A,E
+        LD   (EG_BESTSCORE),A
+        LD   (EG_BESTROW),B
+        LD   (EG_BESTCOL),C
+
+AEGM_NEXTCOL:
+        INC  C
+        LD   A,C
+        CP   8
+        JR   C,AEGM_COL
+
+        INC  B
+        LD   A,B
+        CP   8
+        JP   C,AEGM_ROW
+
+        ; 合法手がなければ終了 (DoTurn 側で PASS 処理)
+        LD   A,(EG_BESTROW)
+        CP   0FFH
+        RET  Z
+
+        ; ベスト手を実際に打つ
+        LD   B,A
+        LD   A,(EG_BESTCOL)
+        LD   C,A
+        LD   A,(AiSide)
+        LD   D,A
+        CALL ApplyMove
+
+        ; "AI moves to XX" 表示 (AIset と同じ)
+        LD   A,(EG_BESTCOL)
+        ADD  A,'A'
+        LD   (AImovePOS),A
+        LD   A,(EG_BESTROW)
+        ADD  A,'1'
+        LD   (AImovePOS+1),A
+        LD   DE,AImoveMSG
+        CALL PrintString
+        LD   DE,AImovePOS
+        CALL PrintString
+        CALL NEWLINE
+        RET
+
+---
+
+### Step 5: DT_DoAI 切り替え
+
+既存の DT_DoAI: ブロックを以下に置き換える。
+
+DT_DoAI:
+        CALL StartTimer
+
+        CALL CountEmpty
+        CP   ENDGAME_THRESHOLD + 1
+        JR   NC,DT_AI_Normal    ; 空き > 閾値 → 通常 depth-2
+        CALL AIset_EG            ; 空き <= 閾値 → 終盤完全読み
+        JR   DT_AI_Done
+
+DT_AI_Normal:
+        CALL AIset
+
+DT_AI_Done:
+        CALL StopTimer
+        JR   DT_SwitchReturn0
+
+---
+
+### Step 6: SearchFull に α-β 追加（Step5 動作確認後）
+
+処理時間が許容範囲内（3秒以下）であればスキップしてよい。
+
+EG_ALPHA 変数を使い、SF_HasMove の走査ループ先頭で初期化:
+        LD   A,80H
+        LD   (EG_ALPHA),A       ; α = -128
+
+ベスト更新後に枝刈り条件を追加:
+        ; α-cutoff: best >= alpha → 呼び出し元はこの手を選ばない
+        LD   A,(EG_BESTSCORE)
+        LD   HL,EG_ALPHA
+        CP   (HL)
+        JR   NC,SF_CUTOFF       ; best >= alpha → 枝刈り
+
+---
+
+### Step 7: 調整・仕上げ
+
+- 処理時間を Pico 計測（PIOA D7 → GPIO15）で確認
+- 余裕があれば ENDGAME_THRESHOLD を 8 → 10 に変更
+- DEVLOG_RVS8.md に計測結果・変更内容を追記
+- git コミット: [MM2_AB_EG] 終盤完全読み実装 (SearchFull negamax)
+- ビルド成果物（.err .hex .lin .lst .sym）はコミットしない
+
+---
+
+## 最終確認チェックリスト
+
+- [ ] PUSH BC が ApplyMove より前にある（SearchFull/AIset_EG 内）
+- [ ] CountAllFlips 呼び出し前に PUSH BC / PUSH DE がある
+- [ ] SearchFull 再帰で EG_DEPTH のインクリメント/デクリメントが対称になっている
+- [ ] SF_SIDE_TMP が再帰をまたいで正しく復元されている
+- [ ] ゲーム終了時（双方 PASS）に無限再帰しない
+- [ ] EG_BESTSCORE の初期値が 80H（-128）になっている
+- [ ] AIset_EG のベスト手なし（EG_BESTROW=FFH）で RET Z している
