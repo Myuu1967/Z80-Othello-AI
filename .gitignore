@@ -12,3 +12,9 @@ othelloGUI/*.pyc
 # Python prototype
 python/__pycache__/
 python/*.pyc
+
+# Claude Code
+.claude/
+
+# Debug
+debug/

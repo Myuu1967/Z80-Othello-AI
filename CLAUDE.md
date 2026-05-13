@@ -4,9 +4,13 @@
 `F:\ClaudeCode\Z80-Othello\asm\` 以下を絶対パスで参照・編集する
 （旧パス `F:\oke\Z80\ASM\オセロ\` は参照しない）
 
-**現在の作業対象: `RFCT120.ASM`（RFCT100 から分岐・NM_RECURSEバグ修正済み） — 再帰 negamax + 完全α-β（α下限継承+エントリーβ-cutoff）+ GA_RFCT100 POS_WEIGHT_D3 / GA_D2S POS_WEIGHT_D2 + mob×8/stable×8/16/-stone×8/4 評価。D3_THRESHOLD=20。EMPTY_CACHE バグ修正済み + MID_GAME 12→18 変更済み + LATE式を (stone_diff+stable_diff)×100 に変更済み。実機確認済み・大会出場候補。**
-`RFCT100.ASM` は現状維持（参照用・編集しない）。
-大会用バージョン候補: `F:\ClaudeCode\Z80-Othello\asm\RFCT120.ASM`（旧確定版: `MM2_AB_D3.ASM`）
+**現在の作業対象: `RFCT150.ASM` / `RF150ROM.ASM`**
+- `RFCT150.ASM`: RFCT120 + 終盤完全読み（AIset_EG/SearchFull, ENDGAME_THRESHOLD=4）有効化版。第7回自作CPU大会（2026-05-09）に出場。終盤完全読み発動時にフリーズ発生 → 原因調査中。
+- `RF150ROM.ASM`: RFCT150 の ROM（27C256）起動対応版。ORG 0000H + InitSIOA/InitCTC3 + RAM変数分離。実機確認済み。
+- `RFCT120.ASM`: 安定版フォールバック（終盤完全読みなし）。現状維持。
+- `RFCT100.ASM`: 参照用・編集しない。
+
+大会出場版: `F:\ClaudeCode\Z80-Othello\asm\RFCT150.ASM`（ROM版: `RF150ROM.ASM`）
 
 ## 開発フロー（Python版を正とする）
 
@@ -74,48 +78,49 @@ RVS8_GREEDY.ASM
                                                               └─ RFCT001.ASM ← カットオフ定数値見直し（MOB_STABLE_CAP フェーズ別）
                                                                    └─ RFCT002.ASM ← AMM_BETA_SKIP 閾値修正 + フェーズ別分岐
                                                                         └─ RFCT003.ASM ← D3_THRESHOLD 調整・総合テスト版（実機確認済み）
-                                                                             └─ RFCT100.ASM ← AIコア再構築（再帰negamax + 符号付きPOS_WEIGHT）★現在作業中
+                                                                             └─ RFCT100.ASM ← AIコア再構築（再帰negamax + 符号付きPOS_WEIGHT）
+                                                                                  └─ RFCT120.ASM ← POS_WEIGHTランタイム切替 + β-cutoff（安定版・実機確認済み）
+                                                                                       └─ RFCT150.ASM ← 終盤完全読み有効化（★大会出場版・フリーズ調査中）
+                                                                                            └─ RF150ROM.ASM ← ROM（27C256）起動対応版（実機確認済み）
 ```
 
-## 実装済み機能 (MM2_AB_D3.ASM) ← 大会用確定版
+## 実装済み機能 (RFCT150.ASM) ← 大会出場版
 
-- Minimax depth-2 + α-β 枝刈り / 空き < 25 で depth-3 切り替え
-- ムーブオーダリング（POS_ORDER テーブル順に探索）
-- 序盤/中盤/終盤フェーズ切り替え + モビリティ差重み付け + 安定石評価（CountStable）
-- **GA最適化 POS_WEIGHT テーブル**（2026-04-22 確定）
+- 再帰 negamax + 完全α-β（α下限継承 + エントリーβ-cutoff）
+- depth-2/3 ランタイム切替（空き < 20 → depth-3、D3_THRESHOLD=20）
+- **終盤完全読み**（AIset_EG / SearchFull、空き ≤ 4 で発動、ENDGAME_THRESHOLD=4）
+- POS_WEIGHT depth別ランタイム切替（depth-2: GA_D2S / depth-3: GA_D2S）
+- PASS処理: 合法手なし→相手番を depth 消費せず再帰（Python互換）
 - 先後手選択: SW0=先手(黒), SW2=後手(白)、SIOA '1'/'2' でも選択可
 - PIOB スイッチ入力（SW0-SW4, Mode3）
 - PIOA D7 → Pico GPIO15 AI処理時間計測
-- 処理時間: 先手・後手ともに **4秒以下**（D3_THRESHOLD=20）
+- 評価値表示（TeraTerm / Pico LCD 5行目）
+- PB5 押下 → 投了・リトライ
+- 処理時間: 先手・後手ともに **4秒以下**（depth-3）
 
-## 評価式 (depth-2)
+## 評価式 (RFCT150 EvalLeaf)
 
 ```
-AIset の mm_score:
-  mm_score = POS_WEIGHT[ai_pos]        (1〜120)
-           + (255 - opp_best)          (相手抑制)
-           + (ai_mob - opp_mob + 64)   (モビリティ差)
+EARLY (空き≥44): pos_diff + mob_diff×4 + stable_diff×4  - stone_diff×4
+MID   (空き≥18): pos_diff + mob_diff×4 + stable_diff×8  - stone_diff×2
+LATE  (空き<18): (stone_diff + stable_diff) × 100
 
-OppBestScore_d2 の opp_best:
-  opp_best = 255 - min_j( max_k(POS_WEIGHT[k] + flips[k]) )
-  相手は AI 最善スコアが最小になる手を選ぶ (minimax)
+pos_diff = Σ(自石:POS_WEIGHT) - Σ(相手石:POS_WEIGHT)  (符号付きテーブル)
 ```
 
-## POS_WEIGHT テーブル（GA最適化版 2026-04-22）
+## POS_WEIGHT テーブル（GA_D2S・depth-2/3 共用）
 
 ```
 ;       A    B    C    D    E    F    G    H
-DEFB  128,   3,  17,  30,  30,  17,   3, 128  ; 1
-DEFB    3,   1,  36,  15,  15,  36,   1,   3  ; 2
-DEFB   17,  36,  18,  29,  29,  18,  36,  17  ; 3
-DEFB   30,  15,  29,   1,   1,  29,  15,  30  ; 4
-DEFB   30,  15,  29,   1,   1,  29,  15,  30  ; 5
-DEFB   17,  36,  18,  29,  29,  18,  36,  17  ; 6
-DEFB    3,   1,  36,  15,  15,  36,   1,   3  ; 7
-DEFB  128,   3,  17,  30,  30,  17,   3, 128  ; 8
+DEFB  114,  -5, -16,  -7,  -7, -16,  -5, 114  ; 1
+DEFB   -5, -54, -16,   7,   7, -16, -54,  -5  ; 2
+DEFB  -16, -16,   6,   2,   2,   6, -16, -16  ; 3
+DEFB   -7,   7,   2, -12, -12,   2,   7,  -7  ; 4/5
+DEFB  -16, -16,   6,   2,   2,   6, -16, -16  ; 6
+DEFB   -5, -54, -16,   7,   7, -16, -54,  -5  ; 7
+DEFB  114,  -5, -16,  -7,  -7, -16,  -5, 114  ; 8
 
-角=128, Xマス=1(禁止), Cマス=3, near_x(C2/B3)=36, 辺中央=30, 中央=1
-max score = 128 + 64 flips = 192 < 256 (byte-safe)
+角=114, Xマス=-54, 符号付き（負値あり）
 ```
 
 ## AI処理時間 実測値
@@ -146,35 +151,40 @@ max score = 128 + 64 flips = 192 < 256 (byte-safe)
 
 ## 次のTODO（優先順）
 
-1. ~~**MM2_AB_D3.ASM 実機アセンブル・動作確認**~~ ✓ 完了（2026-04-22、先手・後手ともに正常動作確認）
-2. ~~**D3_THRESHOLD=25 を実機計測・確定**~~ ✓ 完了（GA最適化テーブルで先手・後手ともに問題なし）
-3. ~~**optimize_weights.py の結果確認・Z80テーブル反映**~~ ✓ 完了（2026-04-22、near_x=36・center=1が主な変化）
+1. ~~**MM2_AB_D3.ASM 実機アセンブル・動作確認**~~ ✓ 完了（2026-04-22）
+2. ~~**D3_THRESHOLD=25 を実機計測・確定**~~ ✓ 完了（2026-04-22）
+3. ~~**optimize_weights.py の結果確認・Z80テーブル反映**~~ ✓ 完了（2026-04-22）
 4. ~~D3_THRESHOLD を大きくして depth-3 適用範囲を拡大~~ — 30試行→5秒超、25に変更済み
-5. ~~**MM2_AB_D3.ASM 終盤 depth-3 の処理時間を実機計測**~~ ✓ 完了（先手・後手ともに4秒以下確認、大会用確定）
-6. **終盤完全読み（AIset_EG/SearchFull）を一時凍結** — 閾値=1 でもフリーズ発生、原因不明のため保留
-7. ~~PASS連続2回・DRAW の動作テスト~~ ✓ 完了（gameDisplay.py 修正済み）
-8. ~~depth-3 実装~~ ✓ 完了（MM2_AB_D3.ASM、空き<20で depth-3 切り替え）
-9. **ROM ブート化** — 27C256 EPROM（UV消去型）で実施予定。AT28C256は非互換のため不使用。気が向いたタイミングで実施。
-10. ~~**MM2_AB_BCUT.ASM アセンブル・実機確認**~~ ✓ 完了（2026-04-23、先手・後手ともに正常動作確認）
-11. ~~**OppBestScore_d3 β-cutoff 実装**~~ ✓ 完了（2026-04-24）。D2_MOB_MAX=1600 に設定済み。実機で5秒の局面が残存 → リファクタで解消予定
-12. **【RFCT000】変数名・ラベル名・関数名の整理** — MM2_AB_BCUT.ASM をコピーしてリネームのみ実施。ロジック変更なし。アセンブル通過で完了。命名規則は下記参照。
-13. **【RFCT001】α-β カットオフ定数の見直し** — `D2_MOB_MAX`→`MOB_STABLE_CAP` リネーム＋フェーズ別定数3つに分割。正しい上限値を計算・設定。アセンブル確認。
-14. **【RFCT002】AMM_BETA_SKIP 閾値修正＋フェーズ別分岐追加** — α-cutoff の閾値を `OBS_SCORE_MAX=192` に変更。プリフィルタにフェーズ別 CAP 切り替え追加。実機で速度計測。
-15. ~~**【RFCT003】D3_THRESHOLD 調整・総合テスト**~~ ✓ 完了（D3_THRESHOLD=20・評価値表示・PB5中断機能、実機確認済み）
-16. 終盤完全読み復活（速度改善後に再挑戦）
-17. ~~GA再最適化（リファクタ完了後、depth-3で学習）~~ → **実行中（2026-04-26）** depth-3・負値あり・V2ベース。結果待ち。
-18. ~~**評価値表示**~~ ✓ 完了（RFCT003、TeraTerm + Pico LCD 5行目、実機確認済み）
-19. ~~**投了/中断処理**~~ ✓ 完了（RFCT003、PB5押下でリトライ画面、PC・Pico両方確認済み）
+5. ~~**MM2_AB_D3.ASM 終盤 depth-3 の処理時間を実機計測**~~ ✓ 完了（2026-04-22）
+6. ~~終盤完全読み（AIset_EG/SearchFull）を一時凍結~~ → RFCT150 で復活
+7. ~~PASS連続2回・DRAW の動作テスト~~ ✓ 完了
+8. ~~depth-3 実装~~ ✓ 完了（MM2_AB_D3.ASM）
+9. ~~**ROM ブート化**~~ ✓ 完了（RF150ROM.ASM、2026-05-07 実機確認済み）
+10. ~~**MM2_AB_BCUT.ASM アセンブル・実機確認**~~ ✓ 完了（2026-04-23）
+11. ~~**OppBestScore_d3 β-cutoff 実装**~~ ✓ 完了（2026-04-24）
+12. ~~**【RFCT000】変数名・ラベル名・関数名の整理**~~ ✓ 完了
+13. ~~**【RFCT001】α-β カットオフ定数の見直し**~~ ✓ 完了
+14. ~~**【RFCT002】AMM_BETA_SKIP 閾値修正＋フェーズ別分岐追加**~~ ✓ 完了
+15. ~~**【RFCT003】D3_THRESHOLD 調整・総合テスト**~~ ✓ 完了（2026-04-25）
+16. ~~終盤完全読み復活~~ ✓ 完了（RFCT150 で実装）
+17. ~~GA再最適化~~ ✓ 完了（GA_D2S を depth-2/3 共用として採用）
+18. ~~**評価値表示**~~ ✓ 完了（RFCT003）
+19. ~~**投了/中断処理**~~ ✓ 完了（RFCT003）
 20. **Pico棋譜記録・盤面ログ** — 対局中の全着手と盤面スナップショットをLittleFSに保存。replay_log機能と連携
-21. **EPROM（27C256）単独起動動作確認** — モニタROMと差し替えて電源ON直後からオセロが起動することを確認
-22. ~~**【RFCT100】AIコア再構築**~~ ✓ 完了（2026-04-26）。再帰 negamax（depth-2/3）+ GA_D3 POS_WEIGHT + mob/stable 評価。アセンブルOK。実機確認待ち。
+21. ~~**EPROM（27C256）単独起動動作確認**~~ ✓ 完了（RF150ROM.ASM、2026-05-07）
+22. ~~**【RFCT100】AIコア再構築**~~ ✓ 完了（2026-04-26）
 23. ~~**【RFCT100】実機確認（再）**~~ RFCT100 は現状維持。RFCT120 を後継として開発継続。
-24. ~~**【RFCT120】実機確認**~~ → β-cutoff 版で再確認（下記 #25 に統合）。
-25. ~~**【RFCT120】β-cutoff 実装・実機確認**~~ ✓ 完了（2026-04-30）。先手・後手ともに depth-3 処理時間 4秒以内確認。
-26. ~~**【RFCT120】EMPTY_CACHE バグ修正**~~ ✓ 完了（2026-05-02）。NegaMax leaf 到達時と NMR_END（PASS）の EvalLeaf 呼び出し前に `CountEmpty` を追加。アセンブル・実機確認待ち。
-27. ~~**【RFCT120】MID_GAME 閾値引き上げ（12→18）**~~ ✓ 完了（2026-05-02）。depth-3 leaf での MID 式破綻（pos_diff かさ上げ + stone_diff ボーナス化）の対策。EMPTY_CACHE 修正と組み合わせて機能。アセンブル・実機確認待ち。
-28. ~~**【RFCT120】stone_diff ペナルティ重みの見直し**~~ ✓ 完了（2026-05-03）。LATE 式を `(stone_diff+stable_diff)×100` に変更（A/Bテストで stable×100 が stable×30 に対し 65% 優勝、stable×60 に対し 82.5% 優勝）。アセンブル・実機確認待ち。
-29. ~~**【RFCT120】実機確認（EMPTY_CACHE+MID_GAME+LATE式変更まとめて）**~~ ✓ 完了（2026-05-03）。D3_THRESHOLD=20 に調整（25だと5秒超え発生）。実機対局で明確なバグなし確認。大会出場候補に昇格。
+24. ~~**【RFCT120】実機確認**~~ ✓ 完了
+25. ~~**【RFCT120】β-cutoff 実装・実機確認**~~ ✓ 完了（2026-04-30）
+26. ~~**【RFCT120】EMPTY_CACHE バグ修正**~~ ✓ 完了（2026-05-02）
+27. ~~**【RFCT120】MID_GAME 閾値引き上げ（12→18）**~~ ✓ 完了（2026-05-02）
+28. ~~**【RFCT120】stone_diff ペナルティ重みの見直し**~~ ✓ 完了（2026-05-03）
+29. ~~**【RFCT120】実機確認**~~ ✓ 完了（2026-05-03）。大会出場候補に昇格。
+30. ~~**【RFCT150】終盤完全読み有効化・実機確認**~~ ✓ 完了（2026-05-04〜05-07）
+31. ~~**【RF150ROM】ROM化・実機確認**~~ ✓ 完了（2026-05-07）
+32. **【RFCT150】AIset_EG フリーズ原因調査・修正** — 第7回大会（2026-05-09）で終盤完全読み発動時にフリーズ発生。SearchFull の無限ループ / スタックオーバーフロー等を調査。★最優先
+33. **評価関数の質向上** — 第7回大会優勝者（ちぇりーたくあんさん）は評価関数の優秀さで勝利。次回大会に向けて改善を検討。
+34. **次回大会（秋〜冬予定）に向けて自作4bitCPU完成** — 設計完了済み。ROM 4KB / RAM 4KB 制約のためオセロAI搭載は次の次を目標。
 
 ## ROM ブート化計画（オセロ完成後）
 
