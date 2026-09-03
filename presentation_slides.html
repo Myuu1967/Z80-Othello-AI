@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>自作CPUオセロ大会 発表資料</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Meiryo', 'Yu Gothic', sans-serif;
+  background: #e8e0d0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+/* スライド本体 */
+.slide {
+  display: none;
+  width: 1280px;
+  height: 720px;
+  background: #f5f0e8;
+  border: 1px solid #c9b99a;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(90,62,27,0.15);
+  padding: 40px 52px;
+  position: relative;
+  overflow: hidden;
+}
+.slide.active { display: flex; flex-direction: column; }
+
+/* ヘッダー */
+.slide-header {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 28px;
+  border-bottom: 2px solid #c9b99a;
+  padding-bottom: 12px;
+}
+.slide-num {
+  font-size: 13px;
+  color: #9a8468;
+  white-space: nowrap;
+}
+.slide-title {
+  font-size: 26px;
+  font-weight: bold;
+  color: #5a3e1b;
+}
+.slide-subtitle {
+  font-size: 14px;
+  color: #7a6548;
+}
+
+/* ナビゲーション */
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 16px;
+}
+.nav button {
+  background: #ede5d5;
+  border: 1px solid #c9b99a;
+  border-radius: 6px;
+  padding: 8px 24px;
+  font-size: 14px;
+  color: #5a3e1b;
+  cursor: pointer;
+  font-family: inherit;
+}
+.nav button:hover { background: #d9cbb5; }
+.nav button:disabled { opacity: 0.3; cursor: default; }
+.nav .counter { font-size: 14px; color: #7a6548; min-width: 60px; text-align: center; }
+
+/* プログレスバー */
+.progress {
+  width: 1280px;
+  height: 5px;
+  background: #d9cbb5;
+  border-radius: 3px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  background: #b5620a;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+
+/* 共通カード */
+.card {
+  background: #fdf8f0;
+  border: 1px solid #d9cbb5;
+  border-radius: 10px;
+  padding: 18px 22px;
+  box-shadow: 0 1px 4px rgba(90,62,27,0.08);
+}
+.card-title {
+  font-size: 13px;
+  font-weight: bold;
+  color: #7a6548;
+  letter-spacing: 0.05em;
+  margin-bottom: 12px;
+}
+.accent-blue   { border-left: 5px solid #2f6db5; }
+.accent-green  { border-left: 5px solid #2e7d32; }
+.accent-orange { border-left: 5px solid #b5620a; }
+.accent-red    { border-left: 5px solid #b5351a; }
+.accent-purple { border-left: 5px solid #6a3fa0; }
+
+/* ================================
+   スライド1: タイトル
+================================ */
+.s1-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+}
+.s1-main-title {
+  font-size: 36px;
+  font-weight: bold;
+  color: #5a3e1b;
+  text-align: center;
+  line-height: 1.4;
+}
+.s1-note {
+  font-size: 18px;
+  color: #9a8468;
+}
+.s1-chips {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+.s1-chip {
+  background: #ede5d5;
+  border: 1px solid #c9b99a;
+  border-radius: 10px;
+  padding: 14px 28px;
+  text-align: center;
+}
+.s1-chip .lbl { font-size: 13px; color: #7a6548; }
+.s1-chip .val { font-size: 24px; font-weight: bold; color: #2f6db5; margin-top: 4px; }
+.s1-arrow { font-size: 28px; color: #2e7d32; }
+.s1-time {
+  background: #fce8e3;
+  border: 2px solid #e8a090;
+  border-radius: 12px;
+  padding: 16px 40px;
+  text-align: center;
+}
+.s1-time .tv { font-size: 48px; font-weight: bold; color: #b5351a; }
+.s1-time .tl { font-size: 16px; color: #7a6548; margin-top: 4px; }
+.s1-time .tf { font-size: 13px; color: #9a8468; margin-top: 4px; }
+.s1-author {
+  font-size: 16px;
+  color: #7a6548;
+  text-align: center;
+}
+
+/* ================================
+   スライド2: 開発手法
+================================ */
+.s2-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 60px 1fr 60px 1fr;
+  align-items: center;
+  gap: 0;
+}
+.s2-box {
+  background: #fdf8f0;
+  border: 1px solid #d9cbb5;
+  border-radius: 10px;
+  padding: 22px 18px;
+  text-align: center;
+  box-shadow: 0 1px 4px rgba(90,62,27,0.08);
+}
+.s2-box.hl {
+  background: #ecdff5;
+  border-color: #6a3fa0;
+}
+.s2-box .icon { font-size: 32px; margin-bottom: 10px; }
+.s2-box .ttl { font-size: 16px; font-weight: bold; color: #5a3e1b; margin-bottom: 8px; }
+.s2-box .desc { font-size: 13px; color: #7a6548; line-height: 1.7; }
+.s2-arrow { text-align: center; font-size: 32px; color: #2e7d32; }
+.s2-note {
+  margin-top: 24px;
+  background: #fef5e4;
+  border-left: 4px solid #b5620a;
+  border-radius: 0 8px 8px 0;
+  padding: 12px 18px;
+  font-size: 14px;
+  color: #7a4f10;
+  line-height: 1.8;
+}
+
+/* ================================
+   スライド3: 思考エンジン
+================================ */
+.s3-flow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+.s3-step {
+  background: #ede5d5;
+  border: 1px solid #c9b99a;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  text-align: center;
+  color: #4a3520;
+  line-height: 1.5;
+}
+.s3-step.hl {
+  background: #ddeaf8;
+  border-color: #2f6db5;
+  color: #1a4d8a;
+  font-weight: bold;
+}
+.s3-step.eg {
+  background: #fce8e3;
+  border-color: #e8a090;
+  color: #8b1a06;
+  font-weight: bold;
+}
+.s3-farrow { font-size: 20px; color: #2e7d32; }
+
+.s3-depth-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+.s3-badge {
+  border-radius: 5px;
+  padding: 4px 12px;
+  font-weight: bold;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.bd2 { background: #ddeaf8; color: #1a4d8a; border: 1px solid #a8c8ea; }
+.bd3 { background: #dff0df; color: #1b5e20; border: 1px solid #a8d5a8; }
+.beg { background: #fce8e3; color: #8b1a06; border: 1px solid #e8a090; }
+.s3-cond { color: #7a6548; font-size: 13px; }
+
+.s3-negabox {
+  background: #fff8ee;
+  border: 1px solid #e0c070;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 13px;
+  color: #5a3e1b;
+  line-height: 1.8;
+  margin-bottom: 16px;
+}
+
+.s3-codes {
+  display: flex;
+  gap: 12px;
+  flex: 1;
+}
+.s3-code-block { flex: 1; }
+.s3-code-label {
+  border-radius: 5px 5px 0 0;
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: bold;
+}
+.lbl-red   { background: #f8d5cf; color: #8b1a06; }
+.lbl-green { background: #c6e3c6; color: #1b5e20; }
+pre.code {
+  border-radius: 0 0 6px 6px;
+  padding: 12px 14px;
+  font-size: 12px;
+  line-height: 1.8;
+  margin: 0;
+  font-family: 'Consolas', 'Courier New', monospace;
+  color: #2c2416;
+}
+pre.code.red-bg   { background: #fdf0ee; border: 1px solid #e8a090; border-top: none; }
+pre.code.green-bg { background: #f0faf0; border: 1px solid #a8d5a8; border-top: none; }
+.c-red   { color: #b5351a; }
+.c-green { color: #1b5e20; font-weight: bold; }
+
+/* ================================
+   スライド4: 評価関数
+================================ */
+.s4-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.eval-formula {
+  background: #ede5d5;
+  border: 1px solid #c9b99a;
+  border-radius: 10px;
+  padding: 16px 20px;
+  font-size: 16px;
+  line-height: 2.0;
+  margin-bottom: 16px;
+}
+.ef-eq     { color: #2f6db5; font-weight: bold; }
+.ef-term   { color: #2e7d32; font-weight: bold; }
+.ef-weight { color: #b5620a; font-weight: bold; }
+
+.phase-row { display: flex; gap: 10px; margin-bottom: 16px; }
+.phase-box {
+  flex: 1;
+  border-radius: 8px;
+  padding: 12px 10px;
+  text-align: center;
+  font-size: 13px;
+}
+.pe { background: #dff0df; border: 1px solid #a8d5a8; }
+.pm { background: #ddeaf8; border: 1px solid #a8c8ea; }
+.pl { background: #fce8e3; border: 1px solid #e8a090; }
+.ph-name { font-weight: bold; font-size: 16px; margin-bottom: 5px; }
+.ph-cond { color: #7a6548; font-size: 12px; margin-bottom: 6px; }
+.ph-val  { font-size: 12px; line-height: 1.7; }
+
+.pos-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 3px;
+  font-size: 12px;
+  text-align: center;
+}
+.pos-cell {
+  padding: 5px 2px;
+  border-radius: 4px;
+  font-weight: bold;
+}
+.pos-hi  { background: #c6e3c6; color: #1b5e20; }
+.pos-lo  { background: #ede5d5; color: #7a6548; }
+.pos-neg { background: #f8d5cf; color: #8b1a06; }
+
+.pos-legend { font-size: 12px; color: #7a6548; margin-top: 8px; }
+
+/* ================================
+   スライド5: まとめ
+================================ */
+.s5-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.check-list {
+  list-style: none;
+  font-size: 17px;
+  line-height: 2.2;
+  color: #2c2416;
+}
+.check-list li::before { content: '✅ '; }
+.cross-list {
+  list-style: none;
+  font-size: 16px;
+  line-height: 2.2;
+  color: #2c2416;
+}
+.cross-list li::before { content: '😅 '; }
+.s5-quote {
+  margin-top: 20px;
+  background: #fef5e4;
+  border-left: 4px solid #b5620a;
+  border-radius: 0 8px 8px 0;
+  padding: 14px 18px;
+  font-size: 15px;
+  color: #7a4f10;
+  line-height: 1.9;
+}
+.s5-big {
+  font-size: 22px;
+  font-weight: bold;
+  color: #5a3e1b;
+  text-align: center;
+  margin-top: 24px;
+  line-height: 1.8;
+}
+</style>
+</head>
+<body>
+
+<!-- ============================
+     スライド 1: タイトル・HW
+============================ -->
+<div class="slide active" id="slide-1">
+  <div class="slide-header">
+    <span class="slide-num">1 / 5</span>
+    <span class="slide-title">SuperAKI-80（Z80相当）によるAIオセロの開発</span>
+  </div>
+  <div class="s1-center">
+    <div class="s1-author">
+      第7回 自作CPUを語る会 自作CPUオセロ大会　2026.05.09<br>
+      たぬきばやし（X: @Tanuki_Bayashin）
+    </div>
+    <div class="s1-note">※ 自作CPUではありません…</div>
+    <div class="s1-chips">
+      <div class="s1-chip">
+        <div class="lbl">CPU</div>
+        <div class="val">TMPZ84C015</div>
+      </div>
+      <div class="s1-arrow">≈</div>
+      <div class="s1-chip">
+        <div class="lbl">種別</div>
+        <div class="val">Z80ファミリ</div>
+      </div>
+      <div class="s1-arrow">　</div>
+      <div class="s1-chip">
+        <div class="lbl">クロック</div>
+        <div class="val">9.83 MHz</div>
+      </div>
+      <div class="s1-arrow">→</div>
+      <div class="s1-chip">
+        <div class="lbl">シリアル</div>
+        <div class="val">9600 bps</div>
+      </div>
+    </div>
+    <div class="s1-time">
+      <div class="tv">≤ 4 秒</div>
+      <div class="tl">1手あたりの制限時間</div>
+      <div class="tf">60 − 8 × log(9.8304 × 10⁶) ≈ 4.06 秒</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================
+     スライド 2: 開発手法
+============================ -->
+<div class="slide" id="slide-2">
+  <div class="slide-header">
+    <span class="slide-num">2 / 5</span>
+    <span class="slide-title">開発手法</span>
+    <span class="slide-subtitle">— 生成AI × 遺伝的アルゴリズム × Z80アセンブリ</span>
+  </div>
+  <div class="s2-grid">
+    <div class="s2-box hl">
+      <div class="icon">🤖</div>
+      <div class="ttl">Claude Code / ChatGPT</div>
+      <div class="desc">
+        アセンブリ言語のコーディングを<br>生成AIの補助で実施<br><br>
+        <span style="color:#6a3fa0; font-weight:bold;">本来なら自力で書くべきところを<br>頼りっきりでした（反省）</span>
+      </div>
+    </div>
+    <div class="s2-arrow">→</div>
+    <div class="s2-box">
+      <div class="icon">🐍</div>
+      <div class="ttl">Python で模擬・最適化</div>
+      <div class="desc">
+        Z80と同じ思考エンジンをPythonで実装<br><br>
+        遺伝的アルゴリズム（GA）で<br>評価テーブルの重みを自動最適化<br><br>
+        <span style="color:#2e7d32;">Z80より100倍以上速く試行できる</span>
+      </div>
+    </div>
+    <div class="s2-arrow">→</div>
+    <div class="s2-box">
+      <div class="icon">⚙️</div>
+      <div class="ttl">Z80 ASM へ移植</div>
+      <div class="desc">
+        最適化済みのテーブルと<br>ロジックをZ80アセンブリに移植<br><br>
+        27C256 EPROM に書き込み<br><span style="color:#2f6db5; font-weight:bold;">ROM単独起動</span>
+      </div>
+    </div>
+  </div>
+  <div class="s2-note">
+    💡 Python → 検証 → Z80移植　のサイクルを繰り返す。Z80で直接デバッグするより格段に速い。<br>
+    　 生成AIのリミットにかかると進捗が停滞することも…（あるある）
+  </div>
+</div>
+
+<!-- ============================
+     スライド 3: 思考エンジン
+============================ -->
+<div class="slide" id="slide-3">
+  <div class="slide-header">
+    <span class="slide-num">3 / 5</span>
+    <span class="slide-title">思考エンジンの進化</span>
+    <span class="slide-subtitle">— 貪欲法から negamax 完全読みまで</span>
+  </div>
+
+  <div class="s3-flow">
+    <div class="s3-step">貪欲法<br><span style="font-size:11px;color:#7a6548;">最初</span></div>
+    <div class="s3-farrow">→</div>
+    <div class="s3-step">1手先読み<br><span style="font-size:11px;color:#7a6548;">minimax</span></div>
+    <div class="s3-farrow">→</div>
+    <div class="s3-step hl">2手先読み<br><span style="font-size:11px;">α-β枝刈り</span></div>
+    <div class="s3-farrow">→</div>
+    <div class="s3-step hl">3手先読み<br><span style="font-size:11px;">終盤のみ</span></div>
+    <div class="s3-farrow">→</div>
+    <div class="s3-step eg">完全読み<br><span style="font-size:11px;">空き≤4</span></div>
+  </div>
+
+  <div class="s3-negabox">
+    <strong style="color:#b5620a;">negamax とは？</strong>
+    minimax は「自分→最大化・相手→最小化」と別ロジックが必要。
+    negamax は <em>相手のスコアを符号反転 ＝ 自分のスコア</em> とみなすことで、
+    どちらの手番も「自分視点で最大化」という<strong>同じコード</strong>で書ける再帰探索。
+  </div>
+
+  <div class="s3-codes">
+    <div class="s3-code-block">
+      <div class="s3-code-label lbl-red">minimax（自分とMAX/MIN別々）</div>
+      <pre class="code red-bg">def minimax(board, depth, is_max):
+    if depth == 0: return evaluate(board)
+    if is_max:              <span class="c-red"># 自分の番</span>
+        best = -INF
+        for move in moves(board):
+            s = minimax(board+move, depth-1, <span class="c-red">False</span>)
+            best = max(best, s)
+    else:                   <span class="c-red"># 相手の番</span>
+        best = +INF
+        for move in moves(board):
+            s = minimax(board+move, depth-1, <span class="c-red">True</span>)
+            best = min(best, s)   <span class="c-red"># ← 最小化</span>
+    return best</pre>
+    </div>
+    <div class="s3-code-block">
+      <div class="s3-code-label lbl-green">negamax（どちらの番も同じコード）</div>
+      <pre class="code green-bg">def negamax(board, depth, side):
+    if depth == 0:
+        return evaluate(board, side)
+    best = -INF
+    for move in moves(board, side):
+        s = negamax(board+move, depth-1,
+                    opponent(side))
+        best = max(best, <span class="c-green">-s</span>)
+        <span class="c-green">#             ↑ 符号反転するだけ</span>
+        <span class="c-green">#  相手に良い = 自分に悪い</span>
+    return best</pre>
+    </div>
+  </div>
+</div>
+
+<!-- ============================
+     スライド 4: 評価関数
+============================ -->
+<div class="slide" id="slide-4">
+  <div class="slide-header">
+    <span class="slide-num">4 / 5</span>
+    <span class="slide-title">評価関数</span>
+    <span class="slide-subtitle">— フェーズ別評価 ＋ 遺伝的アルゴリズムで重みを最適化</span>
+  </div>
+  <div class="s4-grid">
+    <div>
+      <div class="eval-formula">
+        <span class="ef-eq">Score　＝</span><br>
+        　　<span class="ef-term">位置重み差</span><br>
+        　＋ <span class="ef-weight">W1</span> × <span class="ef-term">合法手数差</span>（モビリティ）<br>
+        　＋ <span class="ef-weight">W2</span> × <span class="ef-term">安定石数差</span>
+      </div>
+      <div class="phase-row">
+        <div class="phase-box pe">
+          <div class="ph-name" style="color:#1b5e20;">序盤</div>
+          <div class="ph-cond">空き ≥ 44</div>
+          <div class="ph-val">W1=4　W2=4<br>石数ペナルティ ×4</div>
+        </div>
+        <div class="phase-box pm">
+          <div class="ph-name" style="color:#1a4d8a;">中盤</div>
+          <div class="ph-cond">空き ≥ 18</div>
+          <div class="ph-val">W1=4　W2=8<br>石数ペナルティ ×2</div>
+        </div>
+        <div class="phase-box pl">
+          <div class="ph-name" style="color:#8b1a06;">終盤</div>
+          <div class="ph-cond">空き &lt; 18</div>
+          <div class="ph-val">（石数差 ＋ 安定石差）<br>× 100</div>
+        </div>
+      </div>
+      <div style="background:#fef5e4; border-left:4px solid #b5620a; border-radius:0 8px 8px 0; padding:10px 14px; font-size:13px; color:#7a4f10; line-height:1.8; margin-top:12px;">
+        💡 2手先読みは読みが浅いため W1・W2 を小さく抑え、<br>
+        　 位置重みテーブルも深さ別に GA で別々に最適化
+      </div>
+    </div>
+    <div>
+      <div class="card-title" style="margin-bottom:8px;">位置重みテーブル（GAで最適化）</div>
+      <div class="pos-grid">
+        <div class="pos-cell pos-hi">114</div><div class="pos-cell pos-neg">-5</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-neg">-7</div><div class="pos-cell pos-neg">-7</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-neg">-5</div><div class="pos-cell pos-hi">114</div>
+        <div class="pos-cell pos-neg">-5</div><div class="pos-cell pos-neg">-54</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-lo">7</div><div class="pos-cell pos-lo">7</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-neg">-54</div><div class="pos-cell pos-neg">-5</div>
+        <div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-lo">6</div><div class="pos-cell pos-lo">2</div><div class="pos-cell pos-lo">2</div><div class="pos-cell pos-lo">6</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-neg">-16</div>
+        <div class="pos-cell pos-neg">-7</div><div class="pos-cell pos-lo">7</div><div class="pos-cell pos-lo">2</div><div class="pos-cell pos-neg">-12</div><div class="pos-cell pos-neg">-12</div><div class="pos-cell pos-lo">2</div><div class="pos-cell pos-lo">7</div><div class="pos-cell pos-neg">-7</div>
+        <div class="pos-cell pos-neg">-7</div><div class="pos-cell pos-lo">7</div><div class="pos-cell pos-lo">2</div><div class="pos-cell pos-neg">-12</div><div class="pos-cell pos-neg">-12</div><div class="pos-cell pos-lo">2</div><div class="pos-cell pos-lo">7</div><div class="pos-cell pos-neg">-7</div>
+        <div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-lo">6</div><div class="pos-cell pos-lo">2</div><div class="pos-cell pos-lo">2</div><div class="pos-cell pos-lo">6</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-neg">-16</div>
+        <div class="pos-cell pos-neg">-5</div><div class="pos-cell pos-neg">-54</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-lo">7</div><div class="pos-cell pos-lo">7</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-neg">-54</div><div class="pos-cell pos-neg">-5</div>
+        <div class="pos-cell pos-hi">114</div><div class="pos-cell pos-neg">-5</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-neg">-7</div><div class="pos-cell pos-neg">-7</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-neg">-5</div><div class="pos-cell pos-hi">114</div>
+      </div>
+      <div class="pos-legend" style="margin-top:10px;">
+        <span style="color:#1b5e20;">■</span> 高い（隅=114）
+        <span style="color:#7a6548;">■</span> 低い
+        <span style="color:#8b1a06;">■</span> 負値（Xマス=-54　避けるべき位置）
+      </div>
+      <div style="background:#fef5e4; border-left:4px solid #b5620a; border-radius:0 8px 8px 0; padding:10px 14px; font-size:13px; color:#7a4f10; line-height:1.8; margin-top:14px;">
+        💡 隅を相手に渡してしまう問題 → Xマスに強いペナルティを設定<br>
+        　 このチューニングに一番手を焼きました
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================
+     スライド 5: まとめ
+============================ -->
+<div class="slide" id="slide-5">
+  <div class="slide-header">
+    <span class="slide-num">5 / 5</span>
+    <span class="slide-title">開発を終えて</span>
+  </div>
+  <div class="s5-grid">
+    <div class="card accent-green">
+      <div class="card-title">できたこと</div>
+      <ul class="check-list">
+        <li>negamax + α-β 枝刈りの実装</li>
+        <li>深さ自動切替（2手 / 3手 / 完全読み）</li>
+        <li>遺伝的アルゴリズムで重み最適化</li>
+        <li>処理時間 4秒以内クリア</li>
+        <li>ROM（EPROM）単独起動</li>
+      </ul>
+    </div>
+    <div class="card accent-orange">
+      <div class="card-title">大変だったこと・反省</div>
+      <ul class="cross-list">
+        <li>評価関数のチューニングが一番難しかった</li>
+        <li>生成AIのリミットで進捗が止まることがあった</li>
+        <li>本来は自力でコーディングすべきでした…</li>
+        <li>（それでも楽しかった）</li>
+      </ul>
+      <div class="s5-quote">
+        私は技術者ではなく、趣味のアマチュアです。<br>
+        生成AIに頼りっきりでしたが、<br>
+        それでもちゃんと動くものが完成しました。<br>
+        大会でどこまでやれるか楽しみです！
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ナビゲーション -->
+<div class="nav">
+  <button id="btn-prev" onclick="changeSlide(-1)" disabled>◀　前へ</button>
+  <span class="counter" id="counter">1 / 5</span>
+  <button id="btn-next" onclick="changeSlide(1)">次へ　▶</button>
+</div>
+<div class="progress">
+  <div class="progress-bar" id="progress-bar" style="width:20%;"></div>
+</div>
+
+<script>
+let current = 1;
+const total = 5;
+
+function changeSlide(dir) {
+  document.getElementById('slide-' + current).classList.remove('active');
+  current += dir;
+  document.getElementById('slide-' + current).classList.add('active');
+  document.getElementById('counter').textContent = current + ' / ' + total;
+  document.getElementById('progress-bar').style.width = (current / total * 100) + '%';
+  document.getElementById('btn-prev').disabled = (current === 1);
+  document.getElementById('btn-next').disabled = (current === total);
+}
+
+document.addEventListener('keydown', function(e) {
+  if ((e.key === 'ArrowRight' || e.key === 'ArrowDown') && current < total) changeSlide(1);
+  if ((e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   && current > 1)     changeSlide(-1);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>自作CPUオセロ大会 発表資料</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Meiryo', 'Yu Gothic', sans-serif;
+  background: #f5f0e8;
+  color: #2c2416;
+  width: 1280px;
+  min-height: 720px;
+  padding: 20px;
+}
+
+h1 {
+  text-align: center;
+  font-size: 22px;
+  color: #5a3e1b;
+  border-bottom: 2px solid #c9b99a;
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+}
+.subtitle {
+  text-align: center;
+  font-size: 13px;
+  color: #7a6548;
+  margin-bottom: 14px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: auto auto;
+  gap: 12px;
+}
+
+.card {
+  background: #fdf8f0;
+  border: 1px solid #d9cbb5;
+  border-radius: 10px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 4px rgba(90,62,27,0.08);
+}
+.card.accent-blue  { border-left: 4px solid #2f6db5; }
+.card.accent-green { border-left: 4px solid #2e7d32; }
+.card.accent-orange{ border-left: 4px solid #b5620a; }
+.card.accent-red   { border-left: 4px solid #b5351a; }
+.card.accent-purple{ border-left: 4px solid #6a3fa0; }
+.card.span2 { grid-column: span 2; }
+
+.card-title {
+  font-size: 12px;
+  font-weight: bold;
+  color: #7a6548;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+/* HW block */
+.hw-row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+.hw-chip {
+  background: #ede5d5;
+  border: 1px solid #c9b99a;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  text-align: center;
+  white-space: nowrap;
+}
+.hw-chip .label { font-size: 10px; color: #7a6548; }
+.hw-chip .val   { font-size: 15px; font-weight: bold; color: #2f6db5; }
+.arrow { color: #2e7d32; font-size: 18px; }
+
+.time-box {
+  background: #fce8e3;
+  border: 1px solid #e8a090;
+  border-radius: 8px;
+  padding: 8px 12px;
+  text-align: center;
+  margin-top: 6px;
+}
+.time-box .time-val { font-size: 28px; font-weight: bold; color: #b5351a; }
+.time-box .time-label { font-size: 11px; color: #7a6548; }
+.formula-small { font-size: 11px; color: #9a8468; margin-top: 4px; }
+
+/* Flow block */
+.flow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.flow-step {
+  background: #ede5d5;
+  border: 1px solid #c9b99a;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  text-align: center;
+  color: #4a3520;
+}
+.flow-step.highlight {
+  background: #ddeaf8;
+  border-color: #2f6db5;
+  color: #1a4d8a;
+  font-weight: bold;
+}
+.flow-arrow { color: #2e7d32; font-size: 14px; }
+
+/* Depth block */
+.depth-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.depth-badge {
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-weight: bold;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.d2 { background: #ddeaf8; color: #1a4d8a; border: 1px solid #a8c8ea; }
+.d3 { background: #dff0df; color: #1b5e20; border: 1px solid #a8d5a8; }
+.deg{ background: #fce8e3; color: #8b1a06; border: 1px solid #e8a090; }
+.depth-cond { font-size: 11px; color: #7a6548; }
+
+.cutoff-box {
+  background: #fef5e4;
+  border: 1px solid #e0c070;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #7a4f10;
+  margin-top: 4px;
+}
+
+/* Eval block */
+.eval-formula {
+  background: #ede5d5;
+  border: 1px solid #c9b99a;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  margin-bottom: 8px;
+  line-height: 1.8;
+  color: #2c2416;
+}
+.eval-formula .eq { color: #2f6db5; font-weight: bold; }
+.eval-formula .term { color: #2e7d32; font-weight: bold; }
+.eval-formula .weight { color: #b5620a; font-weight: bold; }
+
+.phase-row {
+  display: flex;
+  gap: 6px;
+  font-size: 11px;
+}
+.phase-box {
+  flex: 1;
+  border-radius: 6px;
+  padding: 6px 8px;
+  text-align: center;
+}
+.pe { background: #dff0df; border: 1px solid #a8d5a8; }
+.pm { background: #ddeaf8; border: 1px solid #a8c8ea; }
+.pl { background: #fce8e3; border: 1px solid #e8a090; }
+.phase-name { font-weight: bold; margin-bottom: 3px; }
+.phase-cond { color: #7a6548; font-size: 10px; }
+.phase-val  { color: #2c2416; font-size: 10px; margin-top: 3px; }
+
+/* GA block */
+.ga-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ga-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ga-box {
+  flex: 1;
+  background: #ede5d5;
+  border: 1px solid #c9b99a;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  text-align: center;
+  color: #4a3520;
+}
+.ga-box.highlight {
+  background: #ecdff5;
+  border-color: #6a3fa0;
+  color: #4a1a7a;
+  font-weight: bold;
+}
+
+/* POS_WEIGHT grid */
+.pos-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  font-size: 10px;
+  text-align: center;
+}
+.pos-cell {
+  padding: 3px 2px;
+  border-radius: 3px;
+  font-weight: bold;
+}
+.pos-hi  { background: #c6e3c6; color: #1b5e20; }
+.pos-mid { background: #ddeaf8; color: #1a4d8a; }
+.pos-lo  { background: #ede5d5; color: #7a6548; }
+.pos-neg { background: #f8d5cf; color: #8b1a06; }
+
+/* Timeline */
+.timeline {
+  display: flex;
+  gap: 0;
+  height: 28px;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 6px;
+  border: 1px solid #c9b99a;
+}
+.tl-seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 0 4px;
+  color: #2c2416;
+}
+.tl-hw   { background: #ccdff0; flex: 1; }
+.tl-dev  { background: #c6e3c6; flex: 1.5; }
+.tl-eng  { background: #fde8c0; flex: 2; }
+.tl-eval { background: #ecdff5; flex: 2; }
+.tl-sum  { background: #f8d5cf; flex: 1; }
+.tl-labels {
+  display: flex;
+  gap: 0;
+  font-size: 10px;
+  color: #9a8468;
+  margin-bottom: 8px;
+}
+.tl-lb { text-align: center; }
+.tl-lb.hw  { flex: 1; }
+.tl-lb.dev { flex: 1.5; }
+.tl-lb.eng { flex: 2; }
+.tl-lb.ev  { flex: 2; }
+.tl-lb.sm  { flex: 1; }
+
+/* comment */
+.comment {
+  background: #fef5e4;
+  border-left: 3px solid #b5620a;
+  border-radius: 0 6px 6px 0;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #7a4f10;
+  margin-top: 8px;
+}
+</style>
+</head>
+<body>
+
+<h1>🎯 SuperAKI-80（Z80相当）によるAIオセロの開発</h1>
+<div class="subtitle">第7回 自作CPUを語る会 自作CPUオセロ大会　2026.05.09　たぬきばやし (@Tanuki_Bayashin)</div>
+
+<!-- 3分タイムライン -->
+<div class="timeline">
+  <div class="tl-seg tl-hw">① HW</div>
+  <div class="tl-seg tl-dev">② 開発手法</div>
+  <div class="tl-seg tl-eng">③ 思考エンジン</div>
+  <div class="tl-seg tl-eval">④ 評価関数</div>
+  <div class="tl-seg tl-sum">⑤ まとめ</div>
+</div>
+<div class="tl-labels">
+  <div class="tl-lb hw">〜0:20</div>
+  <div class="tl-lb dev">〜0:50</div>
+  <div class="tl-lb eng">〜1:40</div>
+  <div class="tl-lb ev">〜2:30</div>
+  <div class="tl-lb sm">〜3:00</div>
+</div>
+
+<div class="grid">
+
+  <!-- ① ハードウェア -->
+  <div class="card accent-blue">
+    <div class="card-title">① ハードウェア</div>
+    <div class="hw-row">
+      <div class="hw-chip"><div class="label">CPU</div><div class="val">TMPZ84C015</div></div>
+      <div class="arrow">≈</div>
+      <div class="hw-chip"><div class="label">種別</div><div class="val">Z80ファミリ</div></div>
+    </div>
+    <div class="hw-row">
+      <div class="hw-chip"><div class="label">クロック</div><div class="val">9.83 MHz</div></div>
+      <div class="arrow">→</div>
+      <div class="hw-chip"><div class="label">SIOA</div><div class="val">9600 bps</div></div>
+    </div>
+    <div class="time-box">
+      <div class="time-val">≤ 4 sec</div>
+      <div class="time-label">1手あたりの制限時間</div>
+      <div class="formula-small">60 − 8×log(9.8304×10⁶) ≈ 4.06 秒</div>
+    </div>
+  </div>
+
+  <!-- ② 開発手法 -->
+  <div class="card accent-green">
+    <div class="card-title">② 開発手法</div>
+    <div class="ga-flow">
+      <div class="ga-row">
+        <div class="ga-box highlight">Claude Code / ChatGPT</div>
+        <div class="flow-arrow">→</div>
+        <div class="ga-box">アセンブリ言語<br>コーディング</div>
+      </div>
+      <div class="ga-row">
+        <div class="ga-box">Python で思考エンジンを模擬</div>
+        <div class="flow-arrow">→</div>
+        <div class="ga-box highlight">遺伝的アルゴリズム<br>重み最適化</div>
+      </div>
+      <div class="ga-row">
+        <div class="ga-box">最適テーブル</div>
+        <div class="flow-arrow">→</div>
+        <div class="ga-box">Z80 ASM へ移植</div>
+      </div>
+    </div>
+    <div class="comment">Python → 検証 → Z80移植 のサイクルで開発</div>
+  </div>
+
+  <!-- ⑤ まとめ -->
+  <div class="card accent-red">
+    <div class="card-title">⑤ 開発を終えて</div>
+    <div style="font-size:12px; line-height:1.9; color:#2c2416;">
+      <div>✅ ROM（27C256 EPROM）単独起動</div>
+      <div>✅ depth-2/3 ハイブリッド探索</div>
+      <div>✅ 終盤 完全読み（negamax α-β）</div>
+      <div>✅ 処理時間 4秒以内クリア</div>
+    </div>
+    <div class="comment">
+      生成AIに頼りっきり…でも動いた！<br>
+      チューニングが一番大変でした
+    </div>
+  </div>
+
+  <!-- ③ 思考エンジン -->
+  <div class="card accent-orange span2">
+    <div class="card-title">③ 思考エンジンの開発</div>
+
+    <!-- 進化フロー -->
+    <div class="flow" style="margin-bottom:10px;">
+      <div class="flow-step">貪欲法<br><span style="font-size:10px;color:#7a6548;">最初</span></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">depth-1<br><span style="font-size:10px;color:#7a6548;">minimax</span></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step highlight">depth-2<br><span style="font-size:10px;">α-β枝刈り</span></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step highlight">depth-3<br><span style="font-size:10px;">終盤のみ</span></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step" style="background:#fce8e3;border-color:#e8a090;color:#8b1a06;font-weight:bold;">完全読み<br><span style="font-size:10px;">空き≤4</span></div>
+    </div>
+
+    <!-- negamax 説明 -->
+    <div style="background:#fff8ee; border:1px solid #e0c070; border-radius:6px; padding:7px 12px; margin-bottom:8px; font-size:12px; color:#5a3e1b; line-height:1.7;">
+      <span style="font-weight:bold; color:#b5620a;">negamax とは？</span>
+      minimax は「自分→最大化・相手→最小化」と別ロジックが必要。
+      negamax は <em>相手のスコアを符号反転 ＝ 自分のスコア</em> とみなすことで、
+      どちらの手番も「自分視点で最大化」という<strong>同じコード</strong>で書ける再帰探索。
+    </div>
+
+    <!-- コード比較 -->
+    <div style="display:flex; gap:8px; margin-bottom:10px; font-size:11px;">
+      <!-- minimax -->
+      <div style="flex:1;">
+        <div style="background:#f8d5cf; border-radius:4px 4px 0 0; padding:3px 8px; font-weight:bold; color:#8b1a06;">minimax（自分とMAX/MIN別々）</div>
+        <pre style="background:#fdf0ee; border:1px solid #e8a090; border-top:none; border-radius:0 0 4px 4px; padding:8px; margin:0; line-height:1.7; color:#2c2416; overflow:auto;">def minimax(board, depth, is_max):
+    if depth == 0:
+        return evaluate(board)
+    if is_max:            <span style="color:#b5351a;"># 自分の番</span>
+        best = -INF
+        for move in moves(board):
+            s = minimax(board+move, depth-1, <span style="color:#b5351a;">False</span>)
+            best = max(best, s)
+    else:                 <span style="color:#b5351a;"># 相手の番</span>
+        best = +INF
+        for move in moves(board):
+            s = minimax(board+move, depth-1, <span style="color:#b5351a;">True</span>)
+            best = min(best, s)  <span style="color:#b5351a;"># ← 最小化</span>
+    return best</pre>
+      </div>
+      <!-- negamax -->
+      <div style="flex:1;">
+        <div style="background:#c6e3c6; border-radius:4px 4px 0 0; padding:3px 8px; font-weight:bold; color:#1b5e20;">negamax（どちらの番も同じコード）</div>
+        <pre style="background:#f0faf0; border:1px solid #a8d5a8; border-top:none; border-radius:0 0 4px 4px; padding:8px; margin:0; line-height:1.7; color:#2c2416; overflow:auto;">def negamax(board, depth, side):
+    if depth == 0:
+        return evaluate(board, side)
+    best = -INF
+    for move in moves(board, side):
+        s = negamax(board+move, depth-1,
+                    opponent(side))
+        best = max(best, <span style="color:#1b5e20; font-weight:bold;">-s</span>)
+        <span style="color:#1b5e20;">#             ↑ 符号反転するだけ</span>
+        <span style="color:#1b5e20;">#   相手にとって良い = 自分に悪い</span>
+
+
+    return best</pre>
+      </div>
+    </div>
+
+    <!-- depth使い分け -->
+    <div style="margin-bottom:8px;">
+      <div class="depth-row">
+        <span class="depth-badge d2">depth-2</span>
+        <span class="depth-cond">空き ≥ 20マス　negamax α-β　通常手番</span>
+      </div>
+      <div class="depth-row">
+        <span class="depth-badge d3">depth-3</span>
+        <span class="depth-cond">空き &lt; 20マス　negamax α-β　終盤切替</span>
+      </div>
+      <div class="depth-row">
+        <span class="depth-badge deg">完全読み</span>
+        <span class="depth-cond">空き ≤ 4マス　石差最大化（符号付き negamax）</span>
+      </div>
+    </div>
+
+    <div class="cutoff-box">
+      ⚡ α-β枝刈り：α下限継承 + エントリーβ-cutoff で探索量を大幅削減<br>
+      　　→ depth-3 でも 4秒以内を達成
+    </div>
+  </div>
+
+  <!-- ④ 評価関数 -->
+  <div class="card accent-purple">
+    <div class="card-title">④ 評価関数</div>
+    <div class="eval-formula">
+      <span class="eq">Score =</span><br>
+      　<span class="term">位置重み差</span><br>
+      　+ <span class="weight">W1</span> × <span class="term">合法手数差</span>（モビリティ）<br>
+      　+ <span class="weight">W2</span> × <span class="term">安定石数差</span>
+    </div>
+
+    <div class="phase-row">
+      <div class="phase-box pe">
+        <div class="phase-name" style="color:#1b5e20;">序盤</div>
+        <div class="phase-cond">空き≥44</div>
+        <div class="phase-val">W1=4 W2=4<br>石数ペナルティ×4</div>
+      </div>
+      <div class="phase-box pm">
+        <div class="phase-name" style="color:#1a4d8a;">中盤</div>
+        <div class="phase-cond">空き≥18</div>
+        <div class="phase-val">W1=4 W2=8<br>石数ペナルティ×2</div>
+      </div>
+      <div class="phase-box pl">
+        <div class="phase-name" style="color:#8b1a06;">終盤</div>
+        <div class="phase-cond">空き&lt;18</div>
+        <div class="phase-val">(石数差+安定石差)×100</div>
+      </div>
+    </div>
+
+    <!-- POS_WEIGHT -->
+    <div style="margin-top:8px; font-size:10px; color:#7a6548; margin-bottom:4px;">
+      位置重みテーブル（depth-2用・GAで最適化）
+    </div>
+    <div class="pos-grid">
+      <!-- row1 -->
+      <div class="pos-cell pos-hi">114</div><div class="pos-cell pos-neg">-5</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-neg">-7</div><div class="pos-cell pos-neg">-7</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-neg">-5</div><div class="pos-cell pos-hi">114</div>
+      <!-- row2 -->
+      <div class="pos-cell pos-neg">-5</div><div class="pos-cell pos-neg">-54</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-lo">7</div><div class="pos-cell pos-lo">7</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-neg">-54</div><div class="pos-cell pos-neg">-5</div>
+      <!-- row3 -->
+      <div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-lo">6</div><div class="pos-cell pos-lo">2</div><div class="pos-cell pos-lo">2</div><div class="pos-cell pos-lo">6</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-neg">-16</div>
+      <!-- row4 -->
+      <div class="pos-cell pos-neg">-7</div><div class="pos-cell pos-lo">7</div><div class="pos-cell pos-lo">2</div><div class="pos-cell pos-neg">-12</div><div class="pos-cell pos-neg">-12</div><div class="pos-cell pos-lo">2</div><div class="pos-cell pos-lo">7</div><div class="pos-cell pos-neg">-7</div>
+      <!-- row5 -->
+      <div class="pos-cell pos-neg">-7</div><div class="pos-cell pos-lo">7</div><div class="pos-cell pos-lo">2</div><div class="pos-cell pos-neg">-12</div><div class="pos-cell pos-neg">-12</div><div class="pos-cell pos-lo">2</div><div class="pos-cell pos-lo">7</div><div class="pos-cell pos-neg">-7</div>
+      <!-- row6 -->
+      <div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-lo">6</div><div class="pos-cell pos-lo">2</div><div class="pos-cell pos-lo">2</div><div class="pos-cell pos-lo">6</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-neg">-16</div>
+      <!-- row7 -->
+      <div class="pos-cell pos-neg">-5</div><div class="pos-cell pos-neg">-54</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-lo">7</div><div class="pos-cell pos-lo">7</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-neg">-54</div><div class="pos-cell pos-neg">-5</div>
+      <!-- row8 -->
+      <div class="pos-cell pos-hi">114</div><div class="pos-cell pos-neg">-5</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-neg">-7</div><div class="pos-cell pos-neg">-7</div><div class="pos-cell pos-neg">-16</div><div class="pos-cell pos-neg">-5</div><div class="pos-cell pos-hi">114</div>
+    </div>
+    <div style="font-size:10px; color:#7a6548; margin-top:4px;">
+      <span style="color:#1b5e20;">■</span> 高い（隅）
+      <span style="color:#1a4d8a;">■</span> 正値
+      <span style="color:#7a6548;">■</span> 低い
+      <span style="color:#8b1a06;">■</span> 負値（Xマス等、避けるべき位置）
+    </div>
+  </div>
+
+</div><!-- /grid -->
+
+</body>
+</html>
