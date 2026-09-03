@@ -2323,7 +2323,7 @@ SF_OLOOP:
         PUSH BC                 ; B=インデックス 保護 (CountAllFlips が BC 破壊)
         LD   HL,POS_ORDER_D3
         LD   C,B
-        LD   D,0
+        LD   B,0                ; ★修正: ADD HL,BC 用に B をクリア (旧: LD D,0 = バグ)
         ADD  HL,BC
         LD   A,(HL)             ; A = offset (0..63)
         LD   C,A                ; C = offset 退避
@@ -2348,7 +2348,7 @@ SF_OLOOP:
         ; row/col を再取得 (CountAllFlips が破壊したため)
         LD   HL,POS_ORDER_D3
         LD   C,B
-        LD   D,0
+        LD   B,0                ; ★修正: ADD HL,BC 用に B をクリア (旧: LD D,0 = バグ)
         ADD  HL,BC
         LD   A,(HL)
         LD   C,A
