@@ -1,0 +1,13 @@
+negamax（どちらの番も同じコード）
+
+def negamax(board, depth, side):
+    if depth == 0:
+        return evaluate(board, side)
+    best = -INF
+    for move in moves(board, side):
+        s = negamax(board+move, depth-1,
+                    opponent(side))
+        best = max(best, -s)
+        #             ↑ 符号反転するだけ
+        #  相手に良い = 自分に悪い
+    return best

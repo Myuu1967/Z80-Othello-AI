@@ -1,0 +1,15 @@
+minimax（自分とMAX/MIN別々）
+
+def minimax(board, depth, is_max):
+    if depth == 0: return evaluate(board)
+    if is_max:              # 自分の番
+        best = -INF
+        for move in moves(board):
+            s = minimax(board+move, depth-1, False)
+            best = max(best, s)
+    else:                   # 相手の番
+        best = +INF
+        for move in moves(board):
+            s = minimax(board+move, depth-1, True)
+            best = min(best, s)   # ← 最小化
+    return best
