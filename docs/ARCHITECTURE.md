@@ -43,6 +43,29 @@ RVS8_GREEDY.ASM
 - PB5 押下 → 投了・リトライ
 - 処理時間: 先手・後手ともに **4秒以下**（depth-3）
 
+## フォールバック版 RFCT120.ASM（安全に動く版）
+
+RFCT150 が実機で不安定なときに差し替える安全版は **`asm/RFCT120.ASM`**。
+DEVLOG 2026-05-03「RFCT120 実機確認・大会出場候補確定」で大会出場候補に昇格した版で、
+先手・後手とも処理時間 4 秒以下を実機確認済み。RFCT150 はこの RFCT120 をコピーして
+`SearchFull` / `AIset_EG` を有効化したものなので、**RFCT150 のフリーズ箇所
+（`SF_OLOOP`）は RFCT120 には存在しない**（`grep SF_OLOOP` = 0 件）。
+
+| 項目 | RFCT120（安全版） | RFCT150（大会版） |
+|---|---|---|
+| 終盤完全読み | **無効** (`ENDGAME_THRESHOLD EQU 0`) | 空き ≤ 4 で発動 (`EQU 4`) |
+| POS_WEIGHT depth-3 | GA_RFCT100 | GA_D2S |
+| depth 切替 | 空き < 20 → depth-3 | 同左 |
+| ROM（27C256）起動版 | **なし** | `RF150ROM.ASM` |
+| 実機確認 | 済（2026-05-03） | 済。ただしフリーズ修正後は未確認 |
+
+`ENDGAME_THRESHOLD EQU 0` により `CALL AIset_EG` の到達条件が「空き ≤ 0」となるため、
+RFCT120 では終盤完全読みは事実上呼ばれない。
+
+**注意: RFCT120 には ROM 起動版がない。** `RF150ROM.ASM` は RFCT150 由来なので、
+EPROM 単独起動でフォールバックしたい場合は RFCT120 の ROM 版を別途作る必要がある。
+モニタ ROM 経由なら `RFCT120.hex`（2026-05-03 ビルド）をそのままロードできる。
+
 ## 評価式 (RFCT150 EvalLeaf)
 
 ```
