@@ -1,11 +1,41 @@
 # Z80 オセロ AI プロジェクト (RVS8)
 
+Super AKI-80 (TMPZ84C015 / 10MHz) で動作するオセロ AI。Z80 アセンブラ実装。
+第7回自作CPU大会 (2026-05-09) 出場作品。
+
+## ドキュメント全体構成 ★最初に読む
+
+このファイルは**入口**。日常的に必要な情報だけを置き、詳細は個別ファイルに分けている。
+
+| ファイル | 記録している内容 | いつ読むか |
+|---|---|---|
+| **CLAUDE.md**（本ファイル） | 作業対象、開発フロー、ハード仕様、Git規約、現在の最優先タスク | 毎回 |
+| [docs/PITFALLS.md](docs/PITFALLS.md) | 既知の注意事項（レジスタ破壊・オーバーフロー・インデックス計算の罠） | **アセンブラを書く前に必ず** |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 版の系譜、実装済み機能、評価式、POS_WEIGHT テーブル、処理時間実測値、ROM化構成 | 仕様を確認するとき |
+| [docs/REFERENCE.md](docs/REFERENCE.md) | 関数リファレンス（入出力・破壊レジスタ）、RFCT000 命名規則 | 既存関数を呼ぶ・名前を決めるとき |
+| [docs/TODO.md](docs/TODO.md) | TODO 一覧（消化済み含む） | 次の作業を決めるとき |
+| [DEVLOG_RVS8.md](DEVLOG_RVS8.md) | 詳細な時系列の開発ログ（変更・実機計測・バグ調査・大会報告） | 経緯を追うとき／作業後に追記 |
+| [README.md](README.md) | 公開用のプロジェクト概要 | 対外的な説明を書くとき |
+| `README.local.md` | ローカル専用メモ（Git 管理外・非公開） | 些末なメモを書くとき |
+| `asm/FLOW.md` | 制御フロー図。※ MM2_AB_EG 時点で更新停止、行番号は当てにしない | 参考程度 |
+
+**記録の使い分け**: 経緯・実測値は DEVLOG に追記 → 確定した仕様・規約・TODO は
+CLAUDE.md / docs 配下に反映。細かい内部メモは `README.local.md`（公開リポジトリには上げない）。
+
+## 現在の状況（2026-09-08）
+
+- **作業対象**: `asm/RFCT150.ASM`（大会出場版）／`asm/RF150ROM.ASM`（ROM起動版）
+- **最優先**: 終盤完全読みのフリーズ修正（`SF_OLOOP` の `LD D,0` → `LD B,0`、commit 380ee94）の
+  **実機動作確認が未実施**。空き4の局面で完全読みを発動させ、Pico GPIO15 で処理時間を計測する。
+- 次点: `python/measure_eg_nodes.py` でノード数を実測し `SF_NODE_CAP` を決める（Z80側は未実装）
+- 中期: 評価関数の質向上（次回大会 2026年秋〜冬予定）、自作4bit CPU の完成
+
 ## 実コードの場所
 `F:\ClaudeCode\Z80-Othello\asm\` 以下を絶対パスで参照・編集する
 （旧パス `F:\oke\Z80\ASM\オセロ\` は参照しない）
 
 **現在の作業対象: `RFCT150.ASM` / `RF150ROM.ASM`**
-- `RFCT150.ASM`: RFCT120 + 終盤完全読み（AIset_EG/SearchFull, ENDGAME_THRESHOLD=4）有効化版。第7回自作CPU大会（2026-05-09）に出場。終盤完全読み発動時にフリーズ発生 → 原因調査中。
+- `RFCT150.ASM`: RFCT120 + 終盤完全読み（AIset_EG/SearchFull, ENDGAME_THRESHOLD=4）有効化版。第7回自作CPU大会（2026-05-09）に出場。終盤完全読み発動時のフリーズは 2026-09-03 に原因特定・修正済み（実機確認待ち）。
 - `RF150ROM.ASM`: RFCT150 の ROM（27C256）起動対応版。ORG 0000H + InitSIOA/InitCTC3 + RAM変数分離。実機確認済み。
 - `RFCT120.ASM`: 安定版フォールバック（終盤完全読みなし）。現状維持。
 - `RFCT100.ASM`: 参照用・編集しない。
@@ -58,194 +88,6 @@ Z80アセンブラで直接デバッグするより Python で先に確認する
 | PIOB | DATA=1EH, CMD=1FH（SW0-SW4: スイッチ入力, Mode3） |
 | CTC | **利用不可**（Super AKI-80では動作しない） |
 
-## 現行ファイル構成
-
-```
-RVS8_GREEDY.ASM
-  └─ RVS8_POSWEIGHT.ASM
-       └─ RVS8_MINIMAX1.ASM
-            └─ RVS8_MINIMAX1_16.ASM
-                 └─ RVS8_MM1_MOB.ASM
-                      └─ RVS8_PIOSW.ASM  ← 実機確認済み
-                           └─ RVS8_MM2_AB.ASM  ← 実機確認済み
-                                └─ MM2_AB_EG.ASM  ← 終盤完全読み（凍結中）
-                                     └─ MM2_AB_MO.ASM  ← ムーブオーダリング
-                                          └─ MM2_AB_EV.ASM  ← 評価関数改善
-                                               └─ MM2_AB_D3.ASM  ← 大会用確定版
-                                                    ├─ MM2_AB_ROM.ASM  ← ROM起動版（保留中）
-                                                    └─ MM2_AB_BCUT.ASM ← β-cutoff実装版（実機確認済み・リファクタリング元）
-                                                         └─ RFCT000.ASM ← 変数名・ラベル名・関数名整理（ロジック変更なし）
-                                                              └─ RFCT001.ASM ← カットオフ定数値見直し（MOB_STABLE_CAP フェーズ別）
-                                                                   └─ RFCT002.ASM ← AMM_BETA_SKIP 閾値修正 + フェーズ別分岐
-                                                                        └─ RFCT003.ASM ← D3_THRESHOLD 調整・総合テスト版（実機確認済み）
-                                                                             └─ RFCT100.ASM ← AIコア再構築（再帰negamax + 符号付きPOS_WEIGHT）
-                                                                                  └─ RFCT120.ASM ← POS_WEIGHTランタイム切替 + β-cutoff（安定版・実機確認済み）
-                                                                                       └─ RFCT150.ASM ← 終盤完全読み有効化（★大会出場版・フリーズ調査中）
-                                                                                            └─ RF150ROM.ASM ← ROM（27C256）起動対応版（実機確認済み）
-```
-
-## 実装済み機能 (RFCT150.ASM) ← 大会出場版
-
-- 再帰 negamax + 完全α-β（α下限継承 + エントリーβ-cutoff）
-- depth-2/3 ランタイム切替（空き < 20 → depth-3、D3_THRESHOLD=20）
-- **終盤完全読み**（AIset_EG / SearchFull、空き ≤ 4 で発動、ENDGAME_THRESHOLD=4）
-- POS_WEIGHT depth別ランタイム切替（depth-2: GA_D2S / depth-3: GA_D2S）
-- PASS処理: 合法手なし→相手番を depth 消費せず再帰（Python互換）
-- 先後手選択: SW0=先手(黒), SW2=後手(白)、SIOA '1'/'2' でも選択可
-- PIOB スイッチ入力（SW0-SW4, Mode3）
-- PIOA D7 → Pico GPIO15 AI処理時間計測
-- 評価値表示（TeraTerm / Pico LCD 5行目）
-- PB5 押下 → 投了・リトライ
-- 処理時間: 先手・後手ともに **4秒以下**（depth-3）
-
-## 評価式 (RFCT150 EvalLeaf)
-
-```
-EARLY (空き≥44): pos_diff + mob_diff×4 + stable_diff×4  - stone_diff×4
-MID   (空き≥18): pos_diff + mob_diff×4 + stable_diff×8  - stone_diff×2
-LATE  (空き<18): (stone_diff + stable_diff) × 100
-
-pos_diff = Σ(自石:POS_WEIGHT) - Σ(相手石:POS_WEIGHT)  (符号付きテーブル)
-```
-
-## POS_WEIGHT テーブル（GA_D2S・depth-2/3 共用）
-
-```
-;       A    B    C    D    E    F    G    H
-DEFB  114,  -5, -16,  -7,  -7, -16,  -5, 114  ; 1
-DEFB   -5, -54, -16,   7,   7, -16, -54,  -5  ; 2
-DEFB  -16, -16,   6,   2,   2,   6, -16, -16  ; 3
-DEFB   -7,   7,   2, -12, -12,   2,   7,  -7  ; 4/5
-DEFB  -16, -16,   6,   2,   2,   6, -16, -16  ; 6
-DEFB   -5, -54, -16,   7,   7, -16, -54,  -5  ; 7
-DEFB  114,  -5, -16,  -7,  -7, -16,  -5, 114  ; 8
-
-角=114, Xマス=-54, 符号付き（負値あり）
-```
-
-## AI処理時間 実測値
-
-| 版 | 最大処理時間 |
-|----|------------|
-| depth-1 (RVS8_PIOSW) | ≈ 700 ms |
-| depth-2 α-β なし | ≈ 6 秒 |
-| depth-2 α-β あり | **≈ 2 秒以下** |
-
-## Pico 側 (gameDisplay.py) 実装済み機能
-
-- 盤面描画 + UART受信 + ノンブロッキング処理時間計測
-- 先後手選択画面: `Choose:` 受信で [シアン●]:1st(X) [赤●]:2nd(O) 表示
-- AI手・人手・スコア・処理時間の5行ステータス表示
-- GAME OVER + 勝者行（石アイコン付き）
-- AI PASS / YOU PASS 表示
-- リトライ表示（5行目）・新ゲーム自動リセット
-- ログ再生: `replay_log('/replay.txt')`
-
-## 既知の注意事項（MM2_AB_EG 追加分）
-
-- `EG_DEPTH` は `AIset_EG` から呼ぶ際は **1** で初期化（0 は BOARD_SAVE1 衝突）
-- α-β の -INF 初期値は **81H**（`NEG(80H) = 80H` オーバーフローの罠を避ける）
-- `SF_ALPHA_TBL[0]` には `EG_BESTSCORE` を設定（固定 80H でなく AI ベストスコア）
-- `LD r,(nn)` / `LD (nn),r` は A のみ有効（B,C 等は A 経由で代替）
-- `IXL`/`IXH` はアセンブラ非対応 → D/E レジスタで代替
-
-## 次のTODO（優先順）
-
-1. ~~**MM2_AB_D3.ASM 実機アセンブル・動作確認**~~ ✓ 完了（2026-04-22）
-2. ~~**D3_THRESHOLD=25 を実機計測・確定**~~ ✓ 完了（2026-04-22）
-3. ~~**optimize_weights.py の結果確認・Z80テーブル反映**~~ ✓ 完了（2026-04-22）
-4. ~~D3_THRESHOLD を大きくして depth-3 適用範囲を拡大~~ — 30試行→5秒超、25に変更済み
-5. ~~**MM2_AB_D3.ASM 終盤 depth-3 の処理時間を実機計測**~~ ✓ 完了（2026-04-22）
-6. ~~終盤完全読み（AIset_EG/SearchFull）を一時凍結~~ → RFCT150 で復活
-7. ~~PASS連続2回・DRAW の動作テスト~~ ✓ 完了
-8. ~~depth-3 実装~~ ✓ 完了（MM2_AB_D3.ASM）
-9. ~~**ROM ブート化**~~ ✓ 完了（RF150ROM.ASM、2026-05-07 実機確認済み）
-10. ~~**MM2_AB_BCUT.ASM アセンブル・実機確認**~~ ✓ 完了（2026-04-23）
-11. ~~**OppBestScore_d3 β-cutoff 実装**~~ ✓ 完了（2026-04-24）
-12. ~~**【RFCT000】変数名・ラベル名・関数名の整理**~~ ✓ 完了
-13. ~~**【RFCT001】α-β カットオフ定数の見直し**~~ ✓ 完了
-14. ~~**【RFCT002】AMM_BETA_SKIP 閾値修正＋フェーズ別分岐追加**~~ ✓ 完了
-15. ~~**【RFCT003】D3_THRESHOLD 調整・総合テスト**~~ ✓ 完了（2026-04-25）
-16. ~~終盤完全読み復活~~ ✓ 完了（RFCT150 で実装）
-17. ~~GA再最適化~~ ✓ 完了（GA_D2S を depth-2/3 共用として採用）
-18. ~~**評価値表示**~~ ✓ 完了（RFCT003）
-19. ~~**投了/中断処理**~~ ✓ 完了（RFCT003）
-20. **Pico棋譜記録・盤面ログ** — 対局中の全着手と盤面スナップショットをLittleFSに保存。replay_log機能と連携
-21. ~~**EPROM（27C256）単独起動動作確認**~~ ✓ 完了（RF150ROM.ASM、2026-05-07）
-22. ~~**【RFCT100】AIコア再構築**~~ ✓ 完了（2026-04-26）
-23. ~~**【RFCT100】実機確認（再）**~~ RFCT100 は現状維持。RFCT120 を後継として開発継続。
-24. ~~**【RFCT120】実機確認**~~ ✓ 完了
-25. ~~**【RFCT120】β-cutoff 実装・実機確認**~~ ✓ 完了（2026-04-30）
-26. ~~**【RFCT120】EMPTY_CACHE バグ修正**~~ ✓ 完了（2026-05-02）
-27. ~~**【RFCT120】MID_GAME 閾値引き上げ（12→18）**~~ ✓ 完了（2026-05-02）
-28. ~~**【RFCT120】stone_diff ペナルティ重みの見直し**~~ ✓ 完了（2026-05-03）
-29. ~~**【RFCT120】実機確認**~~ ✓ 完了（2026-05-03）。大会出場候補に昇格。
-30. ~~**【RFCT150】終盤完全読み有効化・実機確認**~~ ✓ 完了（2026-05-04〜05-07）
-31. ~~**【RF150ROM】ROM化・実機確認**~~ ✓ 完了（2026-05-07）
-32. ~~**【RFCT150】AIset_EG フリーズ原因調査・修正**~~ ✓ 原因特定・ソース修正完了（2026-09-03）。
-    `SF_OLOOP` の `ADD HL,BC` 用 B クリア漏れ（`LD D,0` → `LD B,0`、RFCT150/RF150ROM 各2箇所）。
-    POS_ORDER_D3 のインデックスが `823BH + i*257` になり、64件中48件が不定RAM読み出し → 同一手の重複探索で分岐爆発。
-    **★実機アセンブル・動作確認が未実施（次回大会前の最優先項目）**
-33. **評価関数の質向上** — 第7回大会優勝者（ちぇりーたくあんさん）は評価関数の優秀さで勝利。次回大会に向けて改善を検討。
-34. **次回大会（秋〜冬予定）に向けて自作4bitCPU完成** — 設計完了済み。ROM 4KB / RAM 4KB 制約のためオセロAI搭載は次の次を目標。
-
-## ROM ブート化計画（オセロ完成後）
-
-28C256（32KB EEPROM）でモニタ ROM と差し替え、オセロ専用機として起動する予定。
-
-### 構造変更方針
-
-```asm
-        ORG  0000H      ; ROM領域: コード・文字列・テーブル
-        LD   SP, 0FFF0H
-        CALL InitSIOA   ; ★追加必須
-        ; ... PIOA/PIOB 初期化（既存）
-        ; ... コード本体
-
-        ORG  8000H      ; RAM領域: 変数のみ
-BOARD:      DEFS 64
-BOARD_SAVE1: DEFS 64
-; ...
-```
-
-### SIOA 初期化コード（モニタ 0196H から解析）
-
-```asm
-InitSIOA:
-    LD   HL, SIOA_INIT_TBL
-    LD   B,  9
-    LD   C,  19H        ; SIOA_CTL
-    OTIR
-    LD   A,  17H
-    OUT  (13H), A       ; ボーレートクロック (port 13H)
-    LD   A,  04H
-    OUT  (13H), A       ; 時定数 → 9600bps
-    RET
-
-SIOA_INIT_TBL:
-    DEFB 18H, 04H, 44H, 03H, 0C1H, 05H, 6AH, 01H, 00H
-```
-
-HEX の 0000H-7FFFH 範囲のみ 28C256 に書き込む。
-
-### AT28C256 ピン非互換問題（2026-04-23 判明・却下）
-
-27C256 と AT28C256 はピン配置が非互換のため Super AKI-80 ソケットに直挿し不可。
-ピン改造は作業コストが高いため **AT28C256 は使用しない方針に確定**。
-
-**→ 27C256 EPROM（UV消去型）を使用する。イレーサー・ライター手元にあり。**
-
----
-
-## 既知の注意事項
-
-- `ApplyMove` は B,C を破壊 → **PUSH BC は ApplyMove より前**
-- `CountMobility` は A を破壊 → **PUSH AF / POP AF 必須**
-- `CountAllFlips` は AF,BC,DE,HL,IX,IY を破壊 → 呼び出し元で PUSH BC / PUSH DE 必須
-- CTC 使用不可 → 計測は Pico 外部計測システムを使用
-- `OppBestScore_d2` 内側ループで D が上書きされる → OD2_COL 先頭で毎回 `LD A,(HumSide); LD D,A`
-- `ADD HL,BC` でテーブルを引く前は **必ず `LD B,0`**（`LD D,0` と書き間違えると B にインデックスが残り、`+i*257` を読む。RFCT150 フリーズの原因）
-
 ## 計測システム
 
 ```
@@ -254,172 +96,7 @@ Z80 SIOA  ──┬──→ PC ターミナル
             └──→ Pico UART → LCD盤面描画（gameDisplay.py・動作確認済み）
 ```
 
-## RFCT000 命名規則（2026-04-25 決定）
-
-### 変数名リネーム表
-
-| 旧 (BCUT) | 新 (RFCT000〜) | 意味 |
-|----------|--------------|------|
-| `AMM_IDX` | `P1_IDX` | ply1 AIループインデックス |
-| `OD2_IDX` | `P2_IDX` | ply2 OPPループインデックス（d2/d3共用） |
-| `ID2_IDX` | `P3_IDX` | ply3 AIループインデックス |
-| `LD3_IDX` | `LF_IDX` | leaf OPPループインデックス |
-| `OBS2_MIN_AI` | `P2_ALPHA` | OPP ply2 の α 値（AI応手スコアの最小値） |
-| `OD2_BETA` | `P1_BETA` | AI ply1 の β 閾値（d2/d3共用） |
-| `OBS_BEST` | `P2_INNER_BEST` | OppBestScore_d2 内ループの一時最善値 |
-| `D3_AI_BEST` | `P3_BEST` | ply3 AI最善スコア |
-| `D3_AI_ALPHA` | `LF_ALPHA` | leaf の α 閾値 |
-| `OBS3_BEST` | `LF_BEST` | leaf OPP最善スコア |
-| `AMM_POS_W` | `P1_POS_W` | ply1 AI位置重みキャッシュ |
-| `D2_MOB_MAX` | `MOB_STABLE_CAP` | mob_stable項の上限（RFCT001でフェーズ別に分割） |
-
-### ラベル名リネーム表
-
-| 旧 (BCUT) | 新 (RFCT000〜) | 対象関数 |
-|----------|--------------|---------|
-| `AMM_LOOP/NEXTCOL/END` | `P1_LOOP/P1_NEXT/P1_END` | AIset 外ループ |
-| `AMM_BETA_SKIP/DONE/DISABLE` | `P1_BSKIP/P1_BDONE/P1_BDIS` | AIset プリフィルタ |
-| `AMM_EVAL_EARLY/MID/LATE` | `P1_EVAL_EARLY/MID/LATE` | AIset 評価フェーズ分岐 |
-| `AMM_SCORE_CMP` | `P1_SCORE_CMP` | AIset スコア比較 |
-| `OD2_LOOP/NEXTCOL/END/BCUT` | `P2_LOOP/P2_NEXT/P2_END/P2_BCUT` | OppBestScore_d2 |
-| `ID2_LOOP/NEXT/END` | `P2I_LOOP/P2I_NEXT/P2I_END` | OppBestScore_d2 内ループ |
-| `OD3_LOOP/NEXTCOL/END/BCUT` | `P2D3_LOOP/P2D3_NEXT/P2D3_END/P2D3_BCUT` | OppBestScore_d3 |
-| `AB_D3_LOOP/NEXT/END/POP` | `P3_LOOP/P3_NEXT/P3_END/P3_POP` | AiBestScore_d3 |
-| `ID3_L/NEXT/END` | `LF_LOOP/LF_NEXT/LF_END` | ID3_LOOP（LeafEval） |
-| `AEV_EARLY` | `P1_PHASE_EARLY` | AIset フェーズ判定（序盤） |
-| `AEV_MID` | `P1_PHASE_MID` | AIset フェーズ判定（中盤） |
-| `AEV_SET_PHASE` | `P1_PHASE_LATE` | AIset フェーズ判定（終盤） |
-| `AMM_SET_DEPTH` | `P1_SET_DEPTH` | AIset depth選択 |
-| `AMM_CALL_D2` | `P1_CALL_D2` | OppBestScore_d2 呼び出し分岐 |
-| `AMM_AFTER_OBS` | `P1_AFTER_OBS` | OppBestScore 呼び出し後 |
-| `OD2_RETURN` | `P2_RETURN` | OppBestScore_d2 戻り処理 |
-| `OD3_RETURN` | `P2D3_RETURN` | OppBestScore_d3 戻り処理 |
-
-### 関数名リネーム表
-
-| 旧 (BCUT) | 新 (RFCT000〜) | 意味 |
-|----------|--------------|------|
-| `OppBestScore_d2` | `Ply2Best_D2` | depth-2 時のply2探索 |
-| `OppBestScore_d3` | `Ply2Best_D3` | depth-3 時のply2探索 |
-| `AiBestScore_d3` | `Ply3Best` | ply3 AI探索 |
-| `ID3_LOOP` | `LeafEval` | leaf 評価ループ |
-| `AIset` | 変更なし | 外部(DoTurn)から呼ぶため維持 |
-| `OppBestScore` | 削除（デッドコード） | depth-1版、どこからも呼ばれていない |
-
-### RFCT001 で追加する定数
-
-```asm
-; mob_stable_term 最大値（フェーズ別）
-;   mob_diff+64 max = 96 (= 32moves + 64), stable_diff+8 max = 24
-MOB_STABLE_CAP_EARLY EQU 1872  ; 96×12 + 24×30
-MOB_STABLE_CAP_MID   EQU 1968  ; 96×8  + 24×50
-MOB_STABLE_CAP_LATE  EQU 1104  ; 96×4  + 24×30
-OBS_SCORE_MAX        EQU  192  ; POS_WEIGHT_MAX(128) + FLIPS_MAX(64)
-```
-
 ## Gitコミット
 
 - コミットメッセージ形式: `[ファイル名] 変更内容の概要`
 - ビルド成果物（.err .hex .lin .lst .sym）はコミットしない
-
-## 関数リファレンス (MM2_AB_EG.ASM)
-
-### シリアル / IO
-
-| 関数 | 入力 | 出力 | 破壊 |
-|---|---|---|---|
-| `PutChar` | A=文字 | — | なし |
-| `PrintString` | DE=文字列アドレス(0終端) | — | AF,DE |
-| `NEWLINE` | — | — | AF |
-| `GetChar` | — | A=受信文字 | AF |
-| `GETLINE` | HL=バッファ先頭 | A=文字数、バッファに0終端文字列 | AF,B,HL |
-| `StartTimer` | — | PIOA bit7 HIGH | AF |
-| `StopTimer` | — | PIOA bit7 LOW | AF |
-
-### PIOB スイッチ
-
-| 関数 | 入力 | 出力 | 破壊 |
-|---|---|---|---|
-| `InitPIOB` | — | — | AF |
-| `Debounce` | — | ≈15ms待ち | なし |
-| `WaitSwPress` | — | A=bitmask(アクティブLOW反転済み) | AF |
-| `SW_PlayerMove` | — | 着手済(BOARD更新) | AF,BC,DE |
-
-### ゲーム制御
-
-| 関数 | 入力 | 出力 | 破壊 |
-|---|---|---|---|
-| `InitBoard` | — | BOARD初期化・PassStreak=0 | AF,BC,DE,HL |
-| `PrintBoard` | — | 盤面シリアル出力 | なし(全PUSH/POP) |
-| `PrintCounts` | — | "X:nn O:nn" 出力 | AF,BC,DE,HL |
-| `DecideFirstTurn` | — | AiSide/HumSide/TurnSide設定 | AF,DE |
-| `DoTurn` | — | A=0:継続 / 1:パス連続終了 | AF,BC,DE |
-| `ShowWinner` | — | 勝者文字列出力 | AF,BC,DE,HL |
-
-### 座標変換
-
-| 関数 | 入力 | 出力 | 破壊 |
-|---|---|---|---|
-| `RowColToOffset` | B=row(0-7),C=col(0-7) | C=offset(B×8+C) | AF |
-| `OffsetToRowCol` | C=offset | B=row,C=col | AF |
-| `InRange` | B=row,C=col | A=1:有効 / 0:無効 | AF |
-
-### 盤面操作
-
-| 関数 | 入力 | 出力 | 破壊 |
-|---|---|---|---|
-| `SaveBoard` | HL=保存先バッファ | BOARD→(HL) | なし(全PUSH/POP) |
-| `RestoreBoard` | HL=復元元バッファ | (HL)→BOARD | なし(全PUSH/POP) |
-| `IsBoardFull` | — | A=1:満杯 / 0:空きあり | AF,BC,HL |
-| `PlaceAtOffset` | A=side,C=offset | A=1:成功 / 0:失敗(BEL) | AF,HL |
-| `CountStones` | — | B=黒数,C=白数 | AF,D,HL |
-| `CountEmpty` | — | A=空きマス数 | AF,BC,HL |
-
-### 合法手判定 / 着手
-
-| 関数 | 入力 | 出力 | 破壊 |
-|---|---|---|---|
-| `TryDirCount` | WORK_PLAYER/ROW/COL・TD_DR/DC設定済み | A=ひっくり返せる枚数 | AF,BC,DE,HL |
-| `IsLegalMove` | D=side,B=row,C=col | A=1:合法 / 0:不合法 | AF,BC,DE,HL,IX,IY |
-| `FlipDirN` | A=枚数,WORK_*/TD_*設定済み | BOARD更新 | AF,BC,HL |
-| `ApplyMove` | D=side,B=row,C=col | A=1:成功 / 0:失敗 | **AF,BC**,DE,HL,IX,IY |
-| `HasAnyLegalMove` | D=player | A=1:あり / 0:なし | AF,BC,DE,HL,IX,IY |
-| `CountAllFlips` | D=player,B=row,C=col | A=合計ひっくり返し数 | **AF,BC,DE,HL,IX,IY** |
-| `CountMobility` | D=player | A=合法手数,AI_MOB_COUNT更新 | **AF**,BC,DE,HL,IX,IY |
-| `ParseMove` | RXBUF設定済み | C=offset,A=1:成功 / 0:失敗 | AF,BC |
-
-### AI — Minimax depth-2 + α-β
-
-| 関数 | 入力 | 出力 | 破壊 |
-|---|---|---|---|
-| `OppBestScore` | D=opp | A=opp_best(depth-1),OBS_COUNT=手数 | AF,BC,DE,HL |
-| `OppBestScore_d2` | D=opp | A=opp_best(depth-2+α-β),OBS_COUNT | AF,BC,DE,HL |
-| `AIset` | — | 最善手をBOARDに反映・移動先を出力 | AF,BC,DE,HL |
-
-### AI — 終盤完全読み
-
-| 関数 | 入力 | 出力 | 破壊 |
-|---|---|---|---|
-| `EG_GetSaveAddr` | A=EG_DEPTH | HL=バッファアドレス | AF,BC,HL |
-| `SearchFull` | D=side,EG_DEPTH設定,SF_SIDE_TMP=side | A=スコア(符号付き,手番視点) | AF,BC,DE,HL |
-| `AIset_EG` | — | 最善手をBOARDに反映・移動先を出力 | AF,BC,DE,HL |
-
-### 主要変数
-
-| 変数 | 用途 |
-|---|---|
-| `AiSide` / `HumSide` / `TurnSide` | BLACK(1)/WHITE(2) |
-| `PassStreak` | 連続パス数(0-2) |
-| `AI_BEST_ROW/COL/SCORE` | AIset 作業用 |
-| `OBS_BEST/OBS_COUNT/OBS2_MIN_AI` | OppBestScore 作業用 |
-| `EG_DEPTH` | SearchFull 再帰深さ(AIset_EGから呼ぶ時は1で初期化) |
-| `EG_BESTSCORE/BESTROW/BESTCOL` | AIset_EG 作業用 |
-| `SF_SIDE_TMP` | SearchFull 内 side 保持用(AiSideでなくこちらを使う) |
-| `SF_ALPHA_TBL[10]` | depth別 alpha値 |
-| `BOARD_SAVE1` | AIset 外ループ用(depth-1) |
-| `BOARD_SAVE2` | OppBestScore_d2 内ループ用(depth-2) |
-| `BOARD_EG_SAVES` | SearchFull 再帰用(depth 2〜9,各64B) |
-
-## 詳細履歴
-
-`DEVLOG_RVS8.md`（このディレクトリ内）を参照
