@@ -1396,3 +1396,35 @@ B はこの直後に row で上書きされ、ループ末尾の `POP BC` で復
 
 - アセンブル → 実機で空き4の局面を作り、完全読み発動を確認
 - 処理時間（Pico GPIO15）が制限時間内に収まるか計測
+
+---
+
+## 現状整理・再開時の起点 (2026-09-08)
+
+大会後〜フリーズ修正までの作業を棚卸しし、次に着手すべき点を明確化した。
+
+### 完了済み（コミット済み）
+
+- フリーズ原因の特定と修正（`SF_OLOOP` の `LD D,0` → `LD B,0`、RFCT150/RF150ROM 各2箇所、commit 380ee94）
+- 修正後の再アセンブル（`RFCT150.hex` / `RF150ROM.hex` 生成済み、Warnings 0 / Errors 0）
+
+### 未完了
+
+| 項目 | 状態 |
+|---|---|
+| **修正版の実機動作確認** | **未実施（最優先）**。空き4局面で完全読みを発動させ、Pico GPIO15 で処理時間を計測する |
+| `python/measure_eg_nodes.py` | **未コミット**。終盤完全読みの正当なノード数を Z80 と同手順（POS_ORDER_D3 順・alpha[depth] 方式・PASSはdepth消費）で実測するスクリプト |
+| `SF_NODE_CAP`（ノード数上限） | Z80 側**未実装**。上記実測を基に値を決めて SearchFull に組み込む |
+| `ENDGAME_THRESHOLD` の引き上げ | 現在4。実測ノード数を見て引き上げ可否を判断 |
+| 評価関数の質向上 | 未着手。次回大会（2026年秋〜冬予定）の最重要課題 |
+| Pico 棋譜記録・盤面ログ | 未着手（CLAUDE.md TODO 20） |
+
+### 恒久メモの整備
+
+セッションをまたいで失われないよう、以下をプロジェクトメモリ
+（`~/.claude/projects/F--ClaudeCode-Z80-Othello/memory/`）に保存した。
+
+- `rfct150-freeze-fix-unverified` — 修正済みだが実機未確認（最優先）
+- `eg-node-cap-plan` — measure_eg_nodes.py と SF_NODE_CAP の狙い
+- `next-contest-goals` — 評価関数の質向上・自作4bit CPU
+- `user-z80-cpu-builder` / `devlog-is-source-of-truth` — 前提と履歴の置き場所
