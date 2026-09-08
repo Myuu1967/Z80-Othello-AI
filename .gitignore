@@ -18,3 +18,7 @@ python/*.pyc
 
 # Debug
 debug/
+
+# ローカル専用メモ（GitHubには公開しない）
+*.local.md
+local/

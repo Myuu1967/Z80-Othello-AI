@@ -71,21 +71,6 @@ LATE （空き < 18）: （stone_diff + stable_diff）× 100
 | depth-2（α-β あり） | 2秒以下 |
 | depth-2/3 切替（RFCT150） | **4秒以下**（大会制限時間クリア） |
 
-## ドキュメント一覧
-
-| ファイル | 記録している内容 |
-|---|---|
-| `README.md` | プロジェクト概要・ハード構成・ファイル構成（この文書） |
-| `CLAUDE.md` | 開発規約の正。現行版の仕様、命名規則、Z80移植時の制約、関数リファレンス、TODO一覧 |
-| `DEVLOG_RVS8.md` | 詳細な時系列の開発ログ。版ごとの変更・実機計測値・バグ調査記録・大会参加報告 |
-| `asm/FLOW.md` | 制御フロー図とGrepマーカー（※ `MM2_AB_EG.ASM` 時点の内容。RFCT系とは行番号・関数名が異なる） |
-| `MM2_AB_EG_実装プロンプト.txt` | 終盤完全読み実装時の設計メモ（履歴資料） |
-| `presentation.html` / `presentation_slides.html` | 第7回自作CPU大会の発表資料 |
-| `python/result*.txt`, `python/ga_*_result*.txt` | GA最適化・評価ウェイトA/Bテストの実行結果 |
-| `位置重み.png` | 位置重みテーブルの可視化図 |
-
-記録の使い分け: **経緯や実測値は DEVLOG に追記**し、**確定した仕様・規約・TODOは CLAUDE.md に反映**する。
-
 ## 開発ログ
 
 詳細な開発経緯・バグ記録は [DEVLOG_RVS8.md](DEVLOG_RVS8.md) を参照。
