@@ -24,11 +24,18 @@ CLAUDE.md / docs 配下に反映。細かい内部メモは `README.local.md`（
 
 ## 現在の状況（2026-09-08）
 
+**★喫緊の目標: 終盤でフリーズしないオセロであることを実機で確認すること。**
+機能追加・性能向上（評価関数の質、ENDGAME_THRESHOLD 引き上げ等）はすべてその後に回す。
+
 - **作業対象**: `asm/RFCT150.ASM`（大会出場版）／`asm/RF150ROM.ASM`（ROM起動版）
 - **最優先**: 終盤完全読みのフリーズ修正（`SF_OLOOP` の `LD D,0` → `LD B,0`、commit 380ee94）の
-  **実機動作確認が未実施**。空き4の局面で完全読みを発動させ、Pico GPIO15 で処理時間を計測する。
-- 次点: `python/measure_eg_nodes.py` でノード数を実測し `SF_NODE_CAP` を決める（Z80側は未実装）
-- 中期: 評価関数の質向上（次回大会 2026年秋〜冬予定）、自作4bit CPU の完成
+  **実機動作確認が未実施**。空き4の局面で完全読みを発動させ、フリーズしないことを確認する。
+  あわせて Pico GPIO15 で処理時間を計測する。
+- フォールバック: `asm/RFCT120.ASM`（終盤完全読み無効の安全版・実機確認済み）。
+  `asm/RFCT120_CP.ASM` はその作業用コピー（アセンブル・動作確認とも未実施）。
+  → 詳細は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) の「フォールバック版」節
+- 確認が取れた後の課題: `SF_NODE_CAP` の実測決定（`python/measure_eg_nodes.py`）、
+  評価関数の質向上（次回大会 2026年秋〜冬予定）、自作4bit CPU の完成
 
 ## 実コードの場所
 `F:\ClaudeCode\Z80-Othello\asm\` 以下を絶対パスで参照・編集する
