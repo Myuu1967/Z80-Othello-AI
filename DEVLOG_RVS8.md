@@ -1413,7 +1413,7 @@ B はこの直後に row で上書きされ、ループ末尾の `POP BC` で復
 | 項目 | 状態 |
 |---|---|
 | **修正版の実機動作確認** | **未実施（最優先）**。空き4局面で完全読みを発動させ、Pico GPIO15 で処理時間を計測する |
-| `python/measure_eg_nodes.py` | commit 784f92b で追加（作業中）。終盤完全読みの正当なノード数を Z80 と同手順（POS_ORDER_D3 順・alpha[depth] 方式・PASSはdepth消費）で実測するスクリプト |
+| `python/measure_eg_nodes.py` | commit 1bcbbb0 で追加（作業中）。終盤完全読みの正当なノード数を Z80 と同手順（POS_ORDER_D3 順・alpha[depth] 方式・PASSはdepth消費）で実測するスクリプト |
 | `SF_NODE_CAP`（ノード数上限） | Z80 側**未実装**。上記実測を基に値を決めて SearchFull に組み込む |
 | `ENDGAME_THRESHOLD` の引き上げ | 現在4。実測ノード数を見て引き上げ可否を判断 |
 | 評価関数の質向上 | 未着手。次回大会（2026年秋〜冬予定）の最重要課題 |
