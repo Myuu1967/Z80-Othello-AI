@@ -1563,3 +1563,24 @@ Z80 側は変更なし。**PC 上の模擬テストのみ済み、実機は未�
 1. Pico に `kifu.py` を追加し、`gameDisplay.py` を `main.py` として上書き
 2. 対局後 Thonny のファイル画面か `mpremote cp :kifu/K0012.txt local/kifu/` で PC へ
 3. `python python/kifu_viewer.py local/kifu/K0012.txt`
+
+### 訂正: モジュール名を `kifu.py` → `kifu_rec.py` に変更（同日）
+
+実機で `AttributeError: 'module' object has no attribute 'Kifu'`。
+MicroPython の `import kifu` は `kifu.py` より先に同名のディレクトリ `/kifu`（棋譜フォルダ）を見つけ、
+空のパッケージとして読み込む。1回目の起動で `/kifu` が作られるので、2回目以降で必ず起きる。
+PC の模擬テストでは、モジュールとフォルダが別の場所にあったため再現しなかった。
+棋譜フォルダ `/kifu` はそのままにし、モジュール名を `kifu_rec.py` に変えた。
+Pico 上の古い `kifu.py` は不要（残っていても読まれない）。
+
+### 実機確認（同日）
+
+Pico に `kifu_rec.py` と `main.py`（gameDisplay.py）を入れ、`RFCT120.hex`（モニタ ROM 経由）で1局対局。
+**記録・取り出し（Thonny）・ビューアでの再現とも正常**。
+
+- 棋譜 `K0001.txt`（14KB）：人が先手（黒）、60 手で終局、**黒 51 – 白 13 で人の勝ち**。フリーズなし
+- **1回パス（AI PASS）の局面は正常に処理**され、対局が続いた。ビューアの照合も警告 0
+- AI の思考時間（GPIO15、29 手）：最大 2372ms、平均 1045ms、終盤は 73〜228ms
+- 2回パスの局面は今回は出ていない → 引き続き、出たときの棋譜を待つ
+
+補足: Thonny の「ダウンロード」は、ファイル画面の上半分で開いているフォルダに保存される（保存先は聞かれない）。

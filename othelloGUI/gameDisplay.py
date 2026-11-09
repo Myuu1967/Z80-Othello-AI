@@ -2,12 +2,12 @@ from machine import UART, Pin, SPI
 import st7789
 import utime
 import romand as vector_font
-import kifu
+import kifu_rec
 
 # ─── 棋譜記録 (/kifu/K0001.txt ～) ─────────────────────
 # ROM / hex を差し替えたら書き換える（Z80 は版名を送らないため）
 Z80_VER = "RFCT120"
-kf = kifu.Kifu(ver=Z80_VER)
+kf = kifu_rec.Kifu(ver=Z80_VER)
 
 def kifu_call(fn, *args):
     """棋譜処理の例外で表示が止まらないようにする"""

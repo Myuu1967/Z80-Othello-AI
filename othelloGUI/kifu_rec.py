@@ -1,6 +1,7 @@
-# kifu.py — Z80 オセロの棋譜を Pico のフラッシュ (/kifu/) に記録する
+# kifu_rec.py — Z80 オセロの棋譜を Pico のフラッシュ (/kifu/) に記録する
 #
 # gameDisplay.py から使う。MicroPython / CPython の両方で動く（PC でテスト可能）。
+#   ※ モジュール名を kifu にしないこと。/kifu フォルダと衝突し、import kifu がフォルダを読む
 #
 # 記録の決まり
 #   - 1局 = 1ファイル。/kifu/K0001.txt から通し番号。最新 KEEP 局だけ残す
