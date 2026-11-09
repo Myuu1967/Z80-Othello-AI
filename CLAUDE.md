@@ -109,6 +109,8 @@ Z80アセンブラで直接デバッグするより Python で先に確認する
 Z80 PIOA D7 ──→ Pico GPIO15 → measureTimeWithZ80.py
 Z80 SIOA  ──┬──→ PC ターミナル
             └──→ Pico UART → LCD盤面描画（gameDisplay.py・動作確認済み）
+                             └→ 棋譜記録 /kifu/K0001.txt～（kifu.py・実機未確認）
+                                  → PC: python/kifu_viewer.py で1手ずつ再現
 ```
 
 ## Gitコミット

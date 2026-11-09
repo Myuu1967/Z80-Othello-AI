@@ -2,6 +2,20 @@ from machine import UART, Pin, SPI
 import st7789
 import utime
 import romand as vector_font
+import kifu
+
+# ─── 棋譜記録 (/kifu/K0001.txt ～) ─────────────────────
+# ROM / hex を差し替えたら書き換える（Z80 は版名を送らないため）
+Z80_VER = "RFCT120"
+kf = kifu.Kifu(ver=Z80_VER)
+
+def kifu_call(fn, *args):
+    """棋譜処理の例外で表示が止まらないようにする"""
+    try:
+        return fn(*args)
+    except Exception as e:
+        print('kifu error:', e)
+        return None
 
 # ─── SPI / TFT ───────────────────────────────────────
 spi = SPI(0, baudrate=31250000, sck=Pin(18), mosi=Pin(19))
@@ -15,7 +29,7 @@ tft.init()
 tft.madctl(0x88)
 
 # ─── UART0 (Z80 SIOA) ────────────────────────────────
-uart = UART(0, baudrate=9600, tx=Pin(0), rx=Pin(1))
+uart = UART(0, baudrate=9600, tx=Pin(0), rx=Pin(1), rxbuf=2048)
 
 # ─── 計測ピン (Z80 PIOA D7 → GPIO15) ─────────────────
 signal = Pin(15, Pin.IN, Pin.PULL_DOWN)
@@ -138,6 +152,17 @@ def check_timer():
         _measuring = False
         LED.value(0)
         time_text  = f"Time:{elapsed // 1000:d}ms"
+        kifu_call(kf.ai_time, elapsed // 1000)
+        draw_status()
+
+def check_kifu():
+    """棋譜の書き込み・フリーズ検出。FREEZE? なら LCD にも出す"""
+    global time_text
+    now = utime.ticks_ms()
+    thinking = utime.ticks_diff(utime.ticks_us(), _t_start) // 1000 if _measuring else None
+    warn = kifu_call(kf.tick, now, thinking)
+    if warn and time_text != warn:
+        time_text = warn
         draw_status()
 
 # ─── UARTパーサー (行単位) ────────────────────────────
@@ -313,9 +338,11 @@ line_buf = b''
 
 while True:
     check_timer()
+    check_kifu()
 
     if uart.any():
         data = uart.read(uart.any())
+        kf.note_rx(utime.ticks_ms())
 
         for byte in data:
             feed_byte(byte)
@@ -327,5 +354,6 @@ while True:
             line_buf = line_buf[idx + 1:]
             line     = raw.decode('utf-8', 'ignore').strip('\r ')
             process_line(line)
+            kifu_call(kf.feed_line, line, utime.ticks_ms())
 
     utime.sleep_ms(10)
