@@ -10,7 +10,7 @@
 - `CountAllFlips` は AF,BC,DE,HL,IX,IY を破壊 → 呼び出し元で PUSH BC / PUSH DE 必須
 - CTC 使用不可 → 計測は Pico 外部計測システムを使用
 - `OppBestScore_d2` 内側ループで D が上書きされる → OD2_COL 先頭で毎回 `LD A,(HumSide); LD D,A`
-- `ADD HL,BC` でテーブルを引く前は **必ず `LD B,0`**（`LD D,0` と書き間違えると B にインデックスが残り、`+i*257` を読む。RFCT150 フリーズの原因）
+- `ADD HL,BC` でテーブルを引く前は **必ず `LD B,0`**（`LD D,0` と書き間違えると B にインデックスが残り、`+i*257` を読む。RFCT150 フリーズの原因の一つ）
 
 ## 既知の注意事項（MM2_AB_EG 追加分）
 
