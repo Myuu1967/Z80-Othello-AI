@@ -53,6 +53,8 @@
 ; Apr 30th, 2026 RFCT120: NM_RECURSE α下限継承 + エントリー β-cutoff追加
 ;   - depth>=1 の NM_ALPHA_TBL[d] 初期値: NM_SCORE_MIN → NM_AIset_ALPHA (完全α-β)
 ;   - エントリー β-cutoff: alpha[d]+alpha[d-1]>=0 なら SaveBoard前に即リターン
+; Nov 9th, 2026 RFCT120_CP: AIset で最初の合法手を無条件採用 (AS_ACCEPT)
+;   - 全候補手が NM_SCORE_MIN 以下だと AI が打たず、2回パスにならず無限ループしていた
 ; =========================================================
 
         ORG 8000H
@@ -1448,6 +1450,13 @@ AS_LOOP:
         AND  A
         SBC  HL,DE              ; HL = -score
 
+        ; 最初の合法手は無条件に採用する (2026-11-09 追加)
+        ;   終盤の評価値は ±12800 まで振れ、全候補手が NM_SCORE_MIN(-8192) 以下だと
+        ;   NM_ROOT_POS=FFH のまま戻り、AI が手を打たない → 2回パスにならず無限ループ
+        LD   A,(NM_ROOT_POS)
+        CP   0FFH
+        JR   Z,AS_ACCEPT        ; 未決定 → スコア比較せず採用
+
         ; if HL > (NM_ROOT_SCORE): 更新
         LD   A,(NM_ROOT_SCORE)
         LD   E,A
@@ -1459,6 +1468,7 @@ AS_LOOP:
         POP  HL                 ; HL = score 復元 (flags 保持)
         JP   M,AS_RESTORE       ; score < best → スキップ
         JR   Z,AS_RESTORE       ; 同点 → スキップ
+AS_ACCEPT:
         LD   (NM_ROOT_SCORE),HL
         LD   A,(AS_OFFSET)
         LD   (NM_ROOT_POS),A
