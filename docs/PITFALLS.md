@@ -14,6 +14,9 @@
 
 ## 既知の注意事項（MM2_AB_EG 追加分）
 
+- `EG_GetSaveAddr` / `NM_GetSaveBuf` のようなアドレス計算ルーチンが **BC を壊さないか**確認する。
+  旧 `EG_GetSaveAddr` は depth≥2 で BC を壊し、`SF_HasMove` の B=row,C=col が化けて着手が空打ち →
+  再帰が止まらずフリーズ（RFCT150 フリーズの主因、2026-11-12 特定・RFCT150_CP で修正）
 - `EG_DEPTH` は `AIset_EG` から呼ぶ際は **1** で初期化（0 は BOARD_SAVE1 衝突）
 - α-β の -INF 初期値は **81H**（`NEG(80H) = 80H` オーバーフローの罠を避ける）
 - `SF_ALPHA_TBL[0]` には `EG_BESTSCORE` を設定（固定 80H でなく AI ベストスコア）

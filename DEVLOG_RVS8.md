@@ -1655,3 +1655,53 @@ RFCT150 に同じ修正を入れた `RFCT150_CP.ASM` を作り、手が空いた
 - **アセンブル・実機確認は未実施（ユーザーが行う）**。Pico の `gameDisplay.py` の `Z80_VER` を `"RFCT150_CP"` にしてから対局すること
 - 確認点: 終盤（空き5以上は AIset、空き4以下は AIset_EG）でフリーズや無限ループが起きないか。止まったら棋譜（`# FREEZE?` / `# IDLE`）で局面を見る
 - RF150ROM への移植は、RFCT150_CP の確認が取れてから
+
+---
+
+## 実機対局の結果と RFCT150 フリーズの原因特定 (2026-11-12)
+
+### RFCT120_CP：2回パス修正（AS_ACCEPT）が働いた跡あり（K0008）
+
+K0002〜K0010 は RFCT120_CP。いずれも終局まで進み、フリーズなし。
+**K0008 の 59 手目で AI の `Eval:-8500`**（修正前なら打たずに戻るしきい値 −8192 より下）だったが、
+AI は B7 に打って 60 手で正常終局（ビューアの `--check` 警告 0）。AS_ACCEPT が働いたと見てよい。
+（人が打てない局面での2回パス終局そのものは、まだ見ていない）
+
+### RFCT150_CP：完全読みで停止（K0011）
+
+※ 棋譜の版名は `RFCT120_CP` のままだが、実際は RFCT150_CP で対局（ユーザー確認）。
+
+56 手目 AI G8 → `YOU PASS` → AI 番（空き A7/B7/A8/B8 の 4 → `AIset_EG`）で `# FREEZE? AI thinking >60s`。
+
+### 原因：`EG_GetSaveAddr` が BC を壊す（RFCT150 作成時 2026-05-03 から）
+
+- `SF_HasMove` は B=row, C=col を求めた**後で** `EG_GetSaveAddr` → `SaveBoard` → `ApplyMove` の順に呼ぶ
+- `EG_GetSaveAddr` は depth ≥ 2 で `LD BC,BOARD_EG_SAVES` / `ADD HL,BC` を使うので **BC = 8417H** になる
+- `ApplyMove` に row=84H, col=17H が渡り、全方向 `InRange` 失敗 → `AM_Fail`（**盤面は変わらない**）
+- 深さ 2 以上の着手がすべて空打ち → 盤面が埋まらず終局しない → 再帰が止まらない
+- depth 11 の退避先（8417H+9×64）が `EG_DEPTH`(8696H) に重なり、変数・スタックを上書きして暴走。
+  上書きで `EG_DEPTH` が偶然小さくなると抜けてくることもある → 「止まったり止まらなかったり」
+- depth 0（AIset_EG 自身）と depth 1（BOARD_SAVE2）は BC を壊さないので正しく動く。
+  閾値 2 の頃は depth 2 で着手が起きるのは相手パス時だけでまれ、閾値 4 で常態化した
+- K0011 は depth 1 で人がパス（SF_Pass）→ depth 2 で AI が着手、という経路で、まさに該当
+- 通常探索の `NM_GetSaveBuf` も BC を壊すが、呼んだ直後に BC を使わないので無害
+
+### 修正（`asm/RFCT150_CP.ASM`）
+
+`EG_GetSaveAddr` の depth ≥ 2 の経路で `PUSH BC` / `POP BC`（ヘッダの Destroys も AF, HL に）。
+呼び出し元（SaveBoard 前・RestoreBoard 前）は無変更。RF150ROM / RFCT150 にも同じコードがある（未修正）。
+
+**机上確認のみ（エミュレータ実行は未実施）。アセンブル・実機確認はユーザーが行う。**
+
+### 見つけたが今回は直さない（手の質の問題で、フリーズの原因ではない）
+
+- `SF_OUPDATE` の β-cutoff で `SF_RET` へ抜けるとき、A が `best − beta` のまま返る（本来は `best`）
+- 符号付き比較を `SUB` + `JP M/P` で行っておりオーバーフローを見ていない。
+  例: 親の alpha が 81H（beta = 7FH）のとき best ≤ −2 で誤って β-cutoff する
+- → 完全読みの手が最善でないことがある。12 月以降に Python（measure_eg_nodes.py）と照合して直す
+
+### 次回の手順
+
+1. `RFCT150_CP.ASM` をアセンブル（Errors 0）→ Pico の `Z80_VER` を `"RFCT150_CP"` にして対局
+2. 終盤（空き 4 以下）で止まらないか、特に相手パス直後の完全読みを確認。K0011 と同じ局面が出れば理想
+3. 確認できたら RF150ROM に同じ修正（AS_ACCEPT と EG_GetSaveAddr）を入れる

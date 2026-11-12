@@ -56,6 +56,7 @@
 ;   - depth>=1 の NM_ALPHA_TBL[d] 初期値: NM_SCORE_MIN → NM_AIset_ALPHA (完全α-β)
 ;   - エントリー β-cutoff: alpha[d]+alpha[d-1]>=0 なら SaveBoard前に即リターン
 ; Nov 12th, 2026 RFCT150_CP: AIset で最初の合法手を無条件採用 (AS_ACCEPT, RFCT120_CP と同じ修正)
+; Nov 12th, 2026 RFCT150_CP: EG_GetSaveAddr で BC を保護 (深さ2以上の着手が空打ちになり再帰が止まらないフリーズの修正)
 ;   - 全候補手が NM_SCORE_MIN 以下だと AI が打たず、2回パスにならず無限ループしていた
 ; =========================================================
 
@@ -2213,7 +2214,10 @@ NMR_RETURN:
 ;   depth N(>=2) -> BOARD_EG_SAVES + (N-2)*64
 ; Input:  A = EG_DEPTH
 ; Output: HL = バッファアドレス
-; Destroys: AF, BC, HL
+; Destroys: AF, HL  (★2026-11-12 修正: BC を保護する)
+;   旧版は depth>=2 で BC を BOARD_EG_SAVES に書き換えていた。SF_HasMove は
+;   B=row,C=col を求めた後にここを呼ぶため、ApplyMove が範囲外の手(84H,17H)で
+;   空打ち → 盤面が埋まらず再帰が止まらない → EG_DEPTH 等を上書きして暴走（フリーズ）
 ; ---------------------------------------------------------
 EG_GetSaveAddr:
         OR   A
@@ -2236,8 +2240,10 @@ EGA_D2:
         ADD  HL,HL          ; ×16
         ADD  HL,HL          ; ×32
         ADD  HL,HL          ; ×64
+        PUSH BC             ; ★修正: 呼び出し元の B=row, C=col を保護
         LD   BC,BOARD_EG_SAVES
         ADD  HL,BC
+        POP  BC
         RET
 
 
