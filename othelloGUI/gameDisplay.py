@@ -6,7 +6,7 @@ import kifu_rec
 
 # ─── 棋譜記録 (/kifu/K0001.txt ～) ─────────────────────
 # ROM / hex を差し替えたら書き換える（Z80 は版名を送らないため）
-Z80_VER = "RFCT120"
+Z80_VER = "RFCT120_CP"
 kf = kifu_rec.Kifu(ver=Z80_VER)
 
 def kifu_call(fn, *args):
