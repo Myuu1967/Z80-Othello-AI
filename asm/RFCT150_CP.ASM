@@ -56,8 +56,8 @@
 ;   - depth>=1 の NM_ALPHA_TBL[d] 初期値: NM_SCORE_MIN → NM_AIset_ALPHA (完全α-β)
 ;   - エントリー β-cutoff: alpha[d]+alpha[d-1]>=0 なら SaveBoard前に即リターン
 ; Nov 12th, 2026 RFCT150_CP: AIset で最初の合法手を無条件採用 (AS_ACCEPT, RFCT120_CP と同じ修正)
-; Nov 12th, 2026 RFCT150_CP: EG_GetSaveAddr で BC を保護 (深さ2以上の着手が空打ちになり再帰が止まらないフリーズの修正)
 ;   - 全候補手が NM_SCORE_MIN 以下だと AI が打たず、2回パスにならず無限ループしていた
+; Nov 12th, 2026 RFCT150_CP: EG_GetSaveAddr で BC を保護 (深さ2以上の着手が空打ちになり再帰が止まらないフリーズの修正)
 ; =========================================================
 
         ORG 8000H

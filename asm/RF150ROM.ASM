@@ -55,6 +55,11 @@
 ; Apr 30th, 2026 RFCT120: NM_RECURSE α下限継承 + エントリー β-cutoff追加
 ;   - depth>=1 の NM_ALPHA_TBL[d] 初期値: NM_SCORE_MIN → NM_AIset_ALPHA (完全α-β)
 ;   - エントリー β-cutoff: alpha[d]+alpha[d-1]>=0 なら SaveBoard前に即リターン
+; Nov 12th, 2026 RF150ROM: RFCT150_CP の修正2件を移植
+;   - AIset で最初の合法手を無条件採用 (AS_ACCEPT)
+;     全候補手が NM_SCORE_MIN 以下だと AI が打たず、2回パスにならず無限ループしていた
+;   - EG_GetSaveAddr で BC を保護
+;     深さ2以上の着手が空打ちになり再帰が止まらないフリーズの修正
 ; =========================================================
 
         ORG 0000H
@@ -1402,6 +1407,13 @@ AS_LOOP:
         AND  A
         SBC  HL,DE              ; HL = -score
 
+        ; 最初の合法手は無条件に採用する (2026-11-09 RFCT120_CP で追加、11-12 RF150ROM へ移植)
+        ;   終盤の評価値は ±12800 まで振れ、全候補手が NM_SCORE_MIN(-8192) 以下だと
+        ;   NM_ROOT_POS=FFH のまま戻り、AI が手を打たない → 2回パスにならず無限ループ
+        LD   A,(NM_ROOT_POS)
+        CP   0FFH
+        JR   Z,AS_ACCEPT        ; 未決定 → スコア比較せず採用
+
         ; if HL > (NM_ROOT_SCORE): 更新
         LD   A,(NM_ROOT_SCORE)
         LD   E,A
@@ -1413,6 +1425,7 @@ AS_LOOP:
         POP  HL                 ; HL = score 復元 (flags 保持)
         JP   M,AS_RESTORE       ; score < best → スキップ
         JR   Z,AS_RESTORE       ; 同点 → スキップ
+AS_ACCEPT:
         LD   (NM_ROOT_SCORE),HL
         LD   A,(AS_OFFSET)
         LD   (NM_ROOT_POS),A
@@ -2153,7 +2166,10 @@ NMR_RETURN:
 ;   depth N(>=2) -> BOARD_EG_SAVES + (N-2)*64
 ; Input:  A = EG_DEPTH
 ; Output: HL = バッファアドレス
-; Destroys: AF, BC, HL
+; Destroys: AF, HL  (★2026-11-12 修正: BC を保護する)
+;   旧版は depth>=2 で BC を BOARD_EG_SAVES に書き換えていた。SF_HasMove は
+;   B=row,C=col を求めた後にここを呼ぶため、ApplyMove が範囲外の手で
+;   空打ち → 盤面が埋まらず再帰が止まらない → EG_DEPTH 等を上書きして暴走（フリーズ）
 ; ---------------------------------------------------------
 EG_GetSaveAddr:
         OR   A
@@ -2176,8 +2192,10 @@ EGA_D2:
         ADD  HL,HL          ; ×16
         ADD  HL,HL          ; ×32
         ADD  HL,HL          ; ×64
+        PUSH BC             ; ★修正: 呼び出し元の B=row, C=col を保護
         LD   BC,BOARD_EG_SAVES
         ADD  HL,BC
+        POP  BC
         RET
 
 
